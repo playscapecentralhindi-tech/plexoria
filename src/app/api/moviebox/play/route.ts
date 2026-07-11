@@ -98,6 +98,51 @@ async function makePostRequest(url: string, payload: any, token: string) {
   return res.json();
 }
 
+function cleanTitle(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/\[[^\]]+\]/g, "")
+    .replace(/\([^)]+\)/g, "")
+    .replace(/\b(hindi|tamil|telugu|english|sub|dub|dubbed|season|s\d+|e\d+|s\d+\-s\d+)\b/gi, "")
+    .replace(/[^a-z0-9]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getMatchScore(itemTitle: string, targetTitle: string, requestedDub?: string | null): number {
+  const cleanTarget = cleanTitle(targetTitle);
+  const cleanItem = cleanTitle(itemTitle);
+  const rawItemTitle = itemTitle.toLowerCase();
+  const rawTargetTitle = targetTitle.toLowerCase();
+
+  if (cleanItem === cleanTarget) {
+    let score = 100;
+    if (requestedDub && rawItemTitle.includes(requestedDub.toLowerCase())) {
+      score += 10;
+    } else if (!requestedDub && (rawItemTitle.includes("hindi") || rawItemTitle.includes("tamil") || rawItemTitle.includes("telugu"))) {
+      score -= 5;
+    }
+    return score;
+  }
+
+  if (cleanItem.includes(cleanTarget) || cleanTarget.includes(cleanItem)) {
+    let score = 50;
+    const lenDiff = Math.abs(cleanItem.length - cleanTarget.length);
+    score -= lenDiff * 2;
+    
+    if (requestedDub && rawItemTitle.includes(requestedDub.toLowerCase())) {
+      score += 10;
+    }
+    return Math.max(score, 10);
+  }
+
+  if (rawItemTitle.includes(rawTargetTitle)) {
+    return 5;
+  }
+
+  return 0;
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const title = searchParams.get("title");
@@ -169,28 +214,26 @@ export async function GET(req: NextRequest) {
             path: i.detailPath
           })), null, 2));
 
-          if (dub) {
-            // Priority matches for specific requested dubs
-            matchedItem = itemsToMatch.find((item: any) => {
-              const itemTitle = (item.title || "").toLowerCase();
-              return itemTitle.includes(dub.toLowerCase()) && itemTitle.includes(title.toLowerCase());
-            });
-          } else {
-            // Default English mode: Exclude regional dub keywords
-            matchedItem = itemsToMatch.find((item: any) => {
-              const itemTitle = (item.title || "").toLowerCase();
-              return itemTitle.includes(title.toLowerCase()) && 
-                     !itemTitle.includes("hindi") && 
-                     !itemTitle.includes("tamil") && 
-                     !itemTitle.includes("telugu");
-            });
-          }
+          // Score and rank all items to find the best match
+          const scoredItems = itemsToMatch.map((item: any) => {
+            const itemTitle = item.title || "";
+            const score = getMatchScore(itemTitle, title, dub);
+            return { item, score };
+          });
+
+          // Sort descending by score
+          scoredItems.sort((a, b) => b.score - a.score);
           
-          if (!matchedItem) {
-            matchedItem = itemsToMatch.find((item: any) => {
-              const itemTitle = (item.title || "").toLowerCase();
-              return itemTitle.includes(title.toLowerCase());
-            }) || itemsToMatch[0];
+          console.log("Scored search results:", JSON.stringify(scoredItems.map(si => ({
+            title: si.item.title,
+            score: si.score
+          })), null, 2));
+
+          // Pick the item with the highest score if score > 0, otherwise fallback to first search item
+          if (scoredItems.length > 0 && scoredItems[0].score > 0) {
+            matchedItem = scoredItems[0].item;
+          } else {
+            matchedItem = itemsToMatch[0];
           }
           
           break; // Found matches, break loop
