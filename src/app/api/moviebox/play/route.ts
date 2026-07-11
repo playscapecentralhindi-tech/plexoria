@@ -420,9 +420,6 @@ export async function GET(req: NextRequest) {
     if (rawStreams.length > 0) {
       streamId = rawStreams[0].id;
       streamFormat = rawStreams[0].format || "MP4";
-    } else if (dashList.length > 0) {
-      streamId = dashList[0].id;
-      streamFormat = dashList[0].format || "DASH";
     } else if (hlsList.length > 0) {
       streamId = hlsList[0].id;
       streamFormat = hlsList[0].format || "HLS";
@@ -463,7 +460,7 @@ export async function GET(req: NextRequest) {
       hasResource: streamsData.hasResource || false,
       streams,
       hls,
-      dash,
+      dash: [],
       captions,
       availableDubs
     };

@@ -148,8 +148,7 @@ export default function VideoPlayer({
 
         const availableStreams = [
           ...(data.streams || []),
-          ...(data.hls || []),
-          ...(data.dash || [])
+          ...(data.hls || [])
         ].filter((s: any) => s.url);
 
         if (availableStreams.length === 0) {
