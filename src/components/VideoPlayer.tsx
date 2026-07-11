@@ -115,7 +115,14 @@ export default function VideoPlayer({
             : `/api/moviebox/play?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&dub=${dubParam}`
         );
         if (!res.ok) {
-          throw new Error("Failed to load Plexoria stream index");
+          let errMsg = "Failed to load Plexoria stream index";
+          try {
+            const errJson = await res.json();
+            if (errJson) {
+              errMsg = errJson.details || errJson.error || errMsg;
+            }
+          } catch (e) {}
+          throw new Error(errMsg);
         }
         const data = await res.json();
         if (data.error) {
