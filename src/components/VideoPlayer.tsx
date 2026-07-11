@@ -70,7 +70,6 @@ export default function VideoPlayer({
   const [streamError, setStreamError] = useState<string | null>(null);
   const [selectedServerId, setSelectedServerId] = useState<number>(0);
   const [hasClickedPlay, setHasClickedPlay] = useState(false);
-  const [useBackupPlayer, setUseBackupPlayer] = useState(false);
 
   const isPhpDeploy = typeof window !== 'undefined' && 
     (window.location.hostname.includes('gr.tc') || window.location.hostname.includes('infinityfree'));
@@ -95,7 +94,6 @@ export default function VideoPlayer({
   useEffect(() => {
     setHasClickedPlay(false);
     setSelectedServerId(0);
-    setUseBackupPlayer(false);
     setAvailableServers([
       { id: 0, name: "Plexoria Server (SUB / Multi-Language)", status: "active", dub: "" },
       { id: 200, name: "Plexoria Server (Hindi Dubbed)", status: "active", dub: "hindi" }
@@ -274,22 +272,6 @@ export default function VideoPlayer({
               <div className="w-10 h-10 rounded-full border-4 border-[#E50914]/20 border-t-[#E50914] animate-spin"></div>
               <span className="text-xs text-gray-400 font-semibold">Resolving secure streams...</span>
             </div>
-          ) : useBackupPlayer ? (
-            <div className="relative w-full h-full">
-              <iframe 
-                src={mediaType === "movie" ? `https://vidlink.pro/embed/movie/${id}` : `https://vidlink.pro/embed/tv/${id}/${season}/${episode}`}
-                className="w-full h-full border-0" 
-                allowFullScreen 
-                allow="autoplay; encrypted-media; picture-in-picture"
-                title={`${title} - Backup Player`}
-              ></iframe>
-              <button 
-                onClick={() => setUseBackupPlayer(false)}
-                className="absolute top-4 right-4 px-3 py-1.5 rounded-lg bg-black/80 hover:bg-black border border-white/10 text-[10px] font-bold text-white flex items-center gap-1.5 backdrop-blur shadow-lg transition-all"
-              >
-                <Undo2 size={12} /> Switch back to Plexoria Server
-              </button>
-            </div>
           ) : streamError ? (
             <div className="relative w-full h-full bg-black flex flex-col items-center justify-center p-6 gap-4">
               <div className="text-center space-y-1 max-w-sm">
@@ -299,12 +281,6 @@ export default function VideoPlayer({
                   {streamError || "MovieBox failed to resolve the media streaming source. Please try again later or refresh the page."}
                 </p>
               </div>
-              <button
-                onClick={() => setUseBackupPlayer(true)}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#E50914] to-[#B91C1C] text-xs font-bold text-white shadow-lg hover:shadow-red-500/10 transition-all hover:scale-103 duration-300 flex items-center gap-2"
-              >
-                <Play size={13} className="fill-current" /> Play from Backup Server
-              </button>
             </div>
           ) : (
             hasClickedPlay && currentStreamUrl ? (
