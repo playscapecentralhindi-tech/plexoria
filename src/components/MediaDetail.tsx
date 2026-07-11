@@ -210,134 +210,137 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
           </div>
         </div>
 
-        {/* Content details layout: Left (Episodes list), Right (Show synopsis details) */}
+        {/* Episodes Section (Full Width, Horizontal scroll row) */}
+        {mediaType === "tv" && (
+          <div className="space-y-4 bg-[#171717]/50 border border-white/5 p-6 rounded-2xl w-full">
+            {/* Episodes header with Season Selector */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h2 className="text-sm md:text-base font-extrabold text-white flex items-center gap-2 uppercase tracking-wider">
+                📺 Season Episodes
+              </h2>
+              
+              {/* Season Dropdown switcher */}
+              {media.seasons?.length > 0 && (
+                <div className="flex items-center gap-2 bg-[#1E1E1E] border border-white/10 rounded-xl px-3 py-1.5">
+                  <span className="text-[9px] text-gray-400 font-extrabold uppercase tracking-wider">Season:</span>
+                  <select
+                    value={activeSeason}
+                    onChange={(e) => {
+                      setActiveSeason(parseInt(e.target.value));
+                      setActiveEpisode(1);
+                    }}
+                    className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer pr-1"
+                  >
+                    {media.seasons
+                      .filter((s: any) => s.season_number > 0)
+                      .map((season: any) => (
+                        <option key={season.id} value={season.season_number} className="bg-[#171717] text-white">
+                          {season.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Episodes List Horizontal Scroll Row */}
+            <div className="flex flex-row gap-4 overflow-x-auto pb-2 scrollbar-thin scroll-smooth w-full">
+              {seasonDetails?.episodes?.map((ep: any) => {
+                const isCurrent = ep.episode_number === activeEpisode;
+                const key = `${id}_${activeSeason}_${ep.episode_number}`;
+                const progress = watchedProgress[key] || 0;
+
+                const stillUrl = ep.still_path 
+                  ? `https://image.tmdb.org/t/p/w300${ep.still_path}` 
+                  : media.backdrop_path 
+                  ? `https://image.tmdb.org/t/p/w300${media.backdrop_path}` 
+                  : "";
+
+                return (
+                  <button
+                    key={ep.id}
+                    onClick={() => setActiveEpisode(ep.episode_number)}
+                    className={`relative w-72 md:w-80 flex flex-col gap-3 p-3.5 rounded-xl border text-left transition-all duration-300 flex-shrink-0 group ${
+                      isCurrent
+                        ? "bg-[#171717] border-[#E50914] shadow-lg shadow-[#E50914]/15"
+                        : "bg-[#111116]/80 hover:bg-[#171717] border-white/5 hover:border-white/10"
+                    }`}
+                  >
+                    {/* Thumbnail image on top */}
+                    <div className="aspect-video w-full rounded-lg overflow-hidden relative border border-white/5 bg-white/5">
+                      {stillUrl ? (
+                        <Image
+                          src={stillUrl}
+                          alt={ep.name}
+                          fill
+                          sizes="(max-width: 768px) 280px, 320px"
+                          className="object-cover group-hover:scale-103 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center w-full h-full text-[10px] text-gray-500 font-bold">No Poster</div>
+                      )}
+
+                      {/* Play overlay on hover */}
+                      <div className="absolute inset-0 bg-black/45 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        <Play size={18} className="fill-current text-white" />
+                      </div>
+
+                      {/* Currently Playing indicator badge */}
+                      {isCurrent && (
+                        <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-[#E50914] text-[8px] font-extrabold text-white tracking-widest uppercase z-20">
+                          PLAYING
+                        </div>
+                      )}
+
+                      {/* Watched Progress bar at bottom of thumbnail */}
+                      {progress > 0 && (
+                        <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-white/20 z-20">
+                          <div 
+                            className="h-full bg-[#E50914] transition-all" 
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Text descriptions below */}
+                    <div className="flex flex-col gap-1 w-full whitespace-normal">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`text-[10px] font-extrabold uppercase tracking-widest ${
+                          isCurrent ? "text-[#E50914]" : "text-gray-400"
+                        }`}>
+                          Episode {ep.episode_number}
+                        </span>
+                        <span className="text-[10px] text-gray-500 font-bold flex items-center gap-1.5">
+                          <span>{ep.runtime || 24} min</span>
+                        </span>
+                      </div>
+                      <h4 className="font-bold text-sm text-white line-clamp-1 group-hover:text-[#E50914] transition-colors mt-0.5">
+                        {ep.name}
+                      </h4>
+                      <p className="text-[11px] text-gray-400 mt-1 line-clamp-2 leading-relaxed">
+                        {ep.overview || "No synopsis available for this episode."}
+                      </p>
+                      
+                      {/* Watched info label */}
+                      {progress > 0 && (
+                        <span className="text-[9px] text-[#E50914] font-bold mt-1.5 flex items-center gap-1">
+                          ✓ Watched {progress}%
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Content details layout: Left (Cast, Recommendations), Right (Show synopsis details) */}
         <div className="flex flex-col lg:flex-row gap-8 items-start w-full">
           
-          {/* Left Column: Episodes Area */}
+          {/* Left Column: Cast & Recommendations */}
           <div className="flex-1 w-full lg:max-w-4xl space-y-6">
-            
-            {mediaType === "tv" && (
-              <div className="space-y-4">
-                
-                {/* Episodes header with Season Selector */}
-                <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                  <h2 className="text-base font-extrabold text-white flex items-center gap-2 uppercase tracking-wide">
-                    📺 Season Episodes
-                  </h2>
-                  
-                  {/* Season Dropdown switcher */}
-                  {media.seasons?.length > 0 && (
-                    <div className="flex items-center gap-2 bg-[#1E1E1E] border border-white/10 rounded-xl px-3 py-1.5">
-                      <span className="text-[9px] text-gray-400 font-extrabold uppercase tracking-wider">Season:</span>
-                      <select
-                        value={activeSeason}
-                        onChange={(e) => {
-                          setActiveSeason(parseInt(e.target.value));
-                          setActiveEpisode(1);
-                        }}
-                        className="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer pr-1"
-                      >
-                        {media.seasons
-                          .filter((s: any) => s.season_number > 0)
-                          .map((season: any) => (
-                            <option key={season.id} value={season.season_number} className="bg-[#171717] text-white">
-                              {season.name}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-
-                {/* Episodes List Grid */}
-                <div className="flex flex-col gap-3 max-h-[700px] overflow-y-auto pr-1.5 scrollbar-thin">
-                  {seasonDetails?.episodes?.map((ep: any) => {
-                    const isCurrent = ep.episode_number === activeEpisode;
-                    const key = `${id}_${activeSeason}_${ep.episode_number}`;
-                    const progress = watchedProgress[key] || 0;
-
-                    const stillUrl = ep.still_path 
-                      ? `https://image.tmdb.org/t/p/w300${ep.still_path}` 
-                      : media.backdrop_path 
-                      ? `https://image.tmdb.org/t/p/w300${media.backdrop_path}` 
-                      : "";
-
-                    return (
-                      <button
-                        key={ep.id}
-                        onClick={() => setActiveEpisode(ep.episode_number)}
-                        className={`relative w-full flex flex-col sm:flex-row gap-4 p-4 rounded-xl border text-left transition-all duration-300 group ${
-                          isCurrent
-                            ? "bg-[#171717] border-l-[4px] border-l-[#E50914] border-y-white/5 border-r-white/5 shadow-md"
-                            : "bg-[#111116]/80 hover:bg-[#171717] border-white/5 hover:border-white/10 hover:translate-y-[-1px]"
-                        }`}
-                      >
-                        {/* Thumbnail image on the left */}
-                        <div className="aspect-video w-full sm:w-40 md:w-44 rounded-lg overflow-hidden relative border border-white/5 flex-shrink-0 bg-white/5">
-                          {stillUrl ? (
-                            <Image
-                              src={stillUrl}
-                              alt={ep.name}
-                              fill
-                              sizes="176px"
-                              className="object-cover group-hover:scale-103 transition-transform duration-300"
-                            />
-                          ) : (
-                            <div className="flex items-center justify-center w-full h-full text-[10px] text-gray-500 font-bold">No Poster</div>
-                          )}
-
-                          {/* Play overlay on hover */}
-                          <div className="absolute inset-0 bg-black/45 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                            <Play size={16} className="fill-current text-white" />
-                          </div>
-
-                          {/* Watched Progress bar at bottom of thumbnail */}
-                          {progress > 0 && (
-                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-20">
-                              <div 
-                                className="h-full bg-[#E50914] transition-all" 
-                                style={{ width: `${progress}%` }}
-                              />
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Text descriptions on the right */}
-                        <div className="flex-grow flex flex-col justify-between py-0.5">
-                          <div>
-                            <div className="flex items-center justify-between gap-4">
-                              <span className={`text-xs font-extrabold uppercase tracking-wide ${
-                                isCurrent ? "text-[#E50914]" : "text-gray-400"
-                              }`}>
-                                Episode {ep.episode_number}
-                              </span>
-                              <span className="text-[10px] text-gray-500 font-bold flex items-center gap-1.5">
-                                <span>{ep.runtime || 24} min</span>
-                                <span>•</span>
-                                <span className="px-1 py-0.2 bg-white/5 border border-white/10 rounded uppercase text-[8px] font-sans">HD</span>
-                              </span>
-                            </div>
-                            <h4 className="font-bold text-sm text-white mt-1 line-clamp-1">
-                              {ep.name}
-                            </h4>
-                            <p className="text-[11px] text-gray-400 mt-2 line-clamp-2 leading-relaxed">
-                              {ep.overview || "No synopsis available for this episode."}
-                            </p>
-                          </div>
-                          
-                          {/* Watched info label */}
-                          {progress > 0 && (
-                            <span className="text-[9px] text-[#E50914] font-bold mt-2 flex items-center gap-1">
-                              ✓ Watched {progress}%
-                            </span>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
             {/* Leading Cast members row */}
             {media.credits?.cast?.length > 0 && (

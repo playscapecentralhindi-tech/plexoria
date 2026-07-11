@@ -45,13 +45,6 @@ interface ServerConfig {
   dub: string;
 }
 
-const BACKUP_SERVERS: ServerConfig[] = [
-  { id: 1001, name: "Backup Server 1 (VidLink - 1080p)", status: "active", dub: "" },
-  { id: 1002, name: "Backup Server 2 (AutoEmbed - Multilingual)", status: "active", dub: "" },
-  { id: 1003, name: "Backup Server 3 (Embed.su - High Speed)", status: "active", dub: "" },
-  { id: 1004, name: "Backup Server 4 (Vidsrc.to - Multilingual)", status: "active", dub: "" }
-];
-
 export default function VideoPlayer({
   mediaType,
   id,
@@ -128,11 +121,6 @@ export default function VideoPlayer({
   useEffect(() => {
     let isMounted = true;
     const fetchMovieBoxStreams = async () => {
-      if (selectedServerId >= 1000) {
-        setIsLoadingStream(false);
-        setStreamError(null);
-        return;
-      }
       setIsLoadingStream(true);
       setStreamError(null);
       try {
@@ -210,9 +198,9 @@ export default function VideoPlayer({
           setActiveSubtitle("");
         }
       } catch (err: any) {
-        console.error("MovieBox stream resolver failed. Falling back to Backup Server 1 (VidLink):", err);
+        console.error("MovieBox stream resolver failed:", err);
         if (isMounted) {
-          setSelectedServerId(1001);
+          setStreamError(err.message || "Failed to resolve streams.");
         }
       } finally {
         if (isMounted) {
@@ -278,26 +266,6 @@ export default function VideoPlayer({
 
   const selectedServer = availableServers.find(s => s.id === selectedServerId) || availableServers[0];
 
-  // Determine if backup player should be rendered and build its embed URL
-  let backupUrl = "";
-  if (selectedServerId === 1001) {
-    backupUrl = mediaType === "movie" 
-      ? `https://vidlink.pro/movie/${imdbId || id}?primaryColor=E50914`
-      : `https://vidlink.pro/tv/${imdbId || id}/${season}/${episode}?primaryColor=E50914`;
-  } else if (selectedServerId === 1002) {
-    backupUrl = mediaType === "movie"
-      ? `https://player.autoembed.cc/movie/${id}`
-      : `https://player.autoembed.cc/tv/${id}/${season}/${episode}`;
-  } else if (selectedServerId === 1003) {
-    backupUrl = mediaType === "movie"
-      ? `https://embed.su/embed/movie/${imdbId || id}`
-      : `https://embed.su/embed/tv/${imdbId || id}/${season}/${episode}`;
-  } else if (selectedServerId === 1004) {
-    backupUrl = mediaType === "movie"
-      ? `https://vidsrc.to/embed/movie/${imdbId || id}`
-      : `https://vidsrc.to/embed/tv/${imdbId || id}/${season}/${episode}`;
-  }
-
   return (
     <div className="w-full flex flex-col gap-4 relative z-20">
       
@@ -343,7 +311,7 @@ export default function VideoPlayer({
               <p className="text-xs text-gray-400 font-semibold mt-2.5 flex items-center gap-2">
                 <span>{mediaType === "tv" ? `Season ${season} • Episode ${episode}` : "Movie"}</span>
                 <span>•</span>
-                <span>${episodeRuntime} min</span>
+                <span>{episodeRuntime} min</span>
                 <span>•</span>
                 <span className="px-1.5 py-0.5 rounded bg-white/10 text-[9px] font-bold text-white uppercase font-sans">HD</span>
                 <span>•</span>
@@ -365,17 +333,6 @@ export default function VideoPlayer({
               <div className="w-10 h-10 rounded-full border-4 border-[#E50914]/20 border-t-[#E50914] animate-spin"></div>
               <span className="text-xs text-gray-400 font-semibold">Resolving secure streams...</span>
             </div>
-          ) : selectedServerId >= 1000 ? (
-            hasClickedPlay && backupUrl ? (
-              <iframe
-                src={backupUrl}
-                className="w-full h-full border-0"
-                allowFullScreen
-                allow="autoplay; encrypted-media; picture-in-picture"
-              />
-            ) : (
-              <div className="text-gray-500 text-xs">Ready to Stream via Backup Mirror</div>
-            )
           ) : streamError ? (
             <div className="relative w-full h-full bg-black flex flex-col items-center justify-center p-6 gap-4">
               <div className="text-center space-y-1 max-w-sm">
@@ -407,6 +364,7 @@ export default function VideoPlayer({
                 autoPlay={autoPlay}
                 autoNext={autoNext}
                 playbackSpeed={playbackSpeed}
+                onSpeedChange={setPlaybackSpeed}
                 mediaId={id}
                 season={season}
                 episode={episode}
@@ -438,11 +396,7 @@ export default function VideoPlayer({
               }}
               className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
             >
-              <span>Server: {
-                selectedServerId >= 1000 
-                  ? (BACKUP_SERVERS.find(s => s.id === selectedServerId)?.name.replace("Backup Server ", "Mirror ") || "Backup")
-                  : (selectedServer.dub === "hindi" ? "Hindi DUB" : "English SUB")
-              }</span>
+              <span>Server: {selectedServer.dub === "hindi" ? "Hindi DUB" : "English SUB"}</span>
               <ChevronDown size={14} className="text-gray-400" />
             </button>
 
@@ -466,163 +420,134 @@ export default function VideoPlayer({
                     {srv.id === selectedServerId && <Check size={12} className="text-[#E50914]" />}
                   </button>
                 ))}
+              </div>
+            )}
+          </div>
 
-                <span className="px-2.5 py-1.5 mt-1 border-t border-white/5 text-[9px] text-gray-500 font-extrabold uppercase tracking-wider block">Backup Mirrors</span>
-                {BACKUP_SERVERS.map((srv) => (
+          {/* Subtitles (CC) selection */}
+          <div className="relative">
+            <button 
+              onClick={() => {
+                setIsSubtitleOpen(!isSubtitleOpen);
+                setIsServerOpen(false);
+                setIsPlaybackMenuOpen(false);
+              }}
+              className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
+            >
+              <span>Subtitles: {activeSubtitle ? "On" : "Off"}</span>
+              <ChevronDown size={14} className="text-gray-400" />
+            </button>
+
+            {isSubtitleOpen && (
+              <div className="absolute left-0 bottom-12 mb-1 w-48 bg-[#171717] border border-white/10 rounded-[14px] p-1.5 flex flex-col gap-0.5 shadow-2xl max-h-48 overflow-y-auto z-50">
+                <button
+                  onClick={() => {
+                    setActiveSubtitle("");
+                    setIsSubtitleOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs font-semibold ${
+                    !activeSubtitle 
+                      ? "bg-[#E50914]/10 text-[#E50914]" 
+                      : "text-gray-300 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  <span>Off</span>
+                  {!activeSubtitle && <Check size={12} className="text-[#E50914]" />}
+                </button>
+                {captions.map((cap) => (
                   <button
-                    key={srv.id}
+                    key={cap.id}
                     onClick={() => {
-                      setSelectedServerId(srv.id);
-                      setIsServerOpen(false);
+                      setActiveSubtitle(cap.url);
+                      setIsSubtitleOpen(false);
                     }}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-xs font-semibold transition-colors ${
-                      srv.id === selectedServerId 
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs font-semibold ${
+                      cap.url === activeSubtitle 
                         ? "bg-[#E50914]/10 text-[#E50914]" 
                         : "text-gray-300 hover:bg-white/5 hover:text-white"
                     }`}
                   >
-                    <span>⚡ {srv.name.replace("Backup Server ", "Mirror ")}</span>
-                    {srv.id === selectedServerId && <Check size={12} className="text-[#E50914]" />}
+                    <span>{cap.language}</span>
+                    {cap.url === activeSubtitle && <Check size={12} className="text-[#E50914]" />}
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Subtitles (CC) selection */}
-          {selectedServerId < 1000 && (
-            <div className="relative">
-              <button 
-                onClick={() => {
-                  setIsSubtitleOpen(!isSubtitleOpen);
-                  setIsServerOpen(false);
-                  setIsPlaybackMenuOpen(false);
-                }}
-                className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
-              >
-                <span>Subtitles: {activeSubtitle ? "On" : "Off"}</span>
-                <ChevronDown size={14} className="text-gray-400" />
-              </button>
-
-              {isSubtitleOpen && (
-                <div className="absolute left-0 bottom-12 mb-1 w-48 bg-[#171717] border border-white/10 rounded-[14px] p-1.5 flex flex-col gap-0.5 shadow-2xl max-h-48 overflow-y-auto z-50">
-                  <button
-                    onClick={() => {
-                      setActiveSubtitle("");
-                      setIsSubtitleOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs font-semibold ${
-                      !activeSubtitle 
-                        ? "bg-[#E50914]/10 text-[#E50914]" 
-                        : "text-gray-300 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
-                    <span>Off</span>
-                    {!activeSubtitle && <Check size={12} className="text-[#E50914]" />}
-                  </button>
-                  {captions.map((cap) => (
-                    <button
-                      key={cap.id}
-                      onClick={() => {
-                        setActiveSubtitle(cap.url);
-                        setIsSubtitleOpen(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs font-semibold ${
-                        cap.url === activeSubtitle 
-                          ? "bg-[#E50914]/10 text-[#E50914]" 
-                          : "text-gray-300 hover:bg-white/5 hover:text-white"
-                      }`}
-                    >
-                      <span>{cap.language}</span>
-                      {cap.url === activeSubtitle && <Check size={12} className="text-[#E50914]" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
           {/* ⚙ Playback settings menu */}
-          {selectedServerId < 1000 && (
-            <div className="relative">
-              <button 
-                onClick={() => {
-                  setIsPlaybackMenuOpen(!isPlaybackMenuOpen);
-                  setIsServerOpen(false);
-                  setIsSubtitleOpen(false);
-                }}
-                className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
-              >
-                <Settings size={14} className="text-gray-400" />
-                <span>⚙ Playback</span>
-                <ChevronDown size={14} className="text-gray-400" />
-              </button>
+          <div className="relative">
+            <button 
+              onClick={() => {
+                setIsPlaybackMenuOpen(!isPlaybackMenuOpen);
+                setIsServerOpen(false);
+                setIsSubtitleOpen(false);
+              }}
+              className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
+            >
+              <Settings size={14} className="text-gray-400" />
+              <span>⚙ Playback</span>
+              <ChevronDown size={14} className="text-gray-400" />
+            </button>
 
-              {isPlaybackMenuOpen && (
-                <div className="absolute left-0 bottom-12 mb-1 w-64 bg-[#171717] border border-white/10 rounded-[14px] p-3 flex flex-col gap-3 shadow-2xl z-50">
-                  <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider border-b border-white/5 pb-1">Playback Settings</span>
-                  
-                  <label className="flex items-center justify-between cursor-pointer text-xs text-gray-300 hover:text-white transition-colors">
-                    <span>Auto Play Next Episode</span>
-                    <input 
-                      type="checkbox" 
-                      checked={autoPlay} 
-                      onChange={(e) => setAutoPlay(e.target.checked)}
-                      className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
-                    />
-                  </label>
+            {isPlaybackMenuOpen && (
+              <div className="absolute left-0 bottom-12 mb-1 w-64 bg-[#171717] border border-white/10 rounded-[14px] p-3 flex flex-col gap-3 shadow-2xl z-50">
+                <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider border-b border-white/5 pb-1">Playback Settings</span>
+                
+                <label className="flex items-center justify-between cursor-pointer text-xs text-gray-300 hover:text-white transition-colors">
+                  <span>Auto Play Next Episode</span>
+                  <input 
+                    type="checkbox" 
+                    checked={autoPlay} 
+                    onChange={(e) => setAutoPlay(e.target.checked)}
+                    className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
+                  />
+                </label>
 
-                  <label className="flex items-center justify-between cursor-pointer text-xs text-gray-300 hover:text-white transition-colors">
-                    <span>Auto Next Episode (Ended)</span>
-                    <input 
-                      type="checkbox" 
-                      checked={autoNext} 
-                      onChange={(e) => setAutoNext(e.target.checked)}
-                      className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
-                    />
-                  </label>
+                <label className="flex items-center justify-between cursor-pointer text-xs text-gray-300 hover:text-white transition-colors">
+                  <span>Auto Next Episode (Ended)</span>
+                  <input 
+                    type="checkbox" 
+                    checked={autoNext} 
+                    onChange={(e) => setAutoNext(e.target.checked)}
+                    className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
+                  />
+                </label>
 
-                  <label className="flex items-center justify-between cursor-pointer text-xs text-gray-300 hover:text-white transition-colors">
-                    <span>Dim Lights Background</span>
-                    <input 
-                      type="checkbox" 
-                      checked={dimLights} 
-                      onChange={(e) => setDimLights(e.target.checked)}
-                      className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
-                    />
-                  </label>
+                <label className="flex items-center justify-between cursor-pointer text-xs text-gray-300 hover:text-white transition-colors">
+                  <span>Dim Lights Background</span>
+                  <input 
+                    type="checkbox" 
+                    checked={dimLights} 
+                    onChange={(e) => setDimLights(e.target.checked)}
+                    className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
+                  />
+                </label>
 
-                  <div className="flex flex-col gap-1.5 border-t border-white/5 pt-2">
-                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Speed:</span>
-                    <div className="flex gap-1">
-                      {[0.5, 1, 1.25, 1.5, 2].map((spd) => (
-                        <button
-                          key={spd}
-                          onClick={() => {
-                            setPlaybackSpeed(spd);
-                            setIsPlaybackMenuOpen(false);
-                          }}
-                          className={`flex-1 py-1 rounded text-[10px] font-bold text-center border transition-all ${
-                            playbackSpeed === spd 
-                              ? "bg-[#E50914] border-[#E50914] text-white" 
-                              : "bg-[#1E1E1E] border-white/5 hover:bg-white/5 text-gray-300"
-                          }`}
-                        >
-                          {spd}x
-                        </button>
-                      ))}
-                    </div>
+                <div className="flex flex-col gap-1.5 border-t border-white/5 pt-2">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Speed:</span>
+                  <div className="flex gap-1">
+                    {[0.5, 1, 1.25, 1.5, 2].map((spd) => (
+                      <button
+                        key={spd}
+                        onClick={() => {
+                          setPlaybackSpeed(spd);
+                          setIsPlaybackMenuOpen(false);
+                        }}
+                        className={`flex-1 py-1 rounded text-[10px] font-bold text-center border transition-all ${
+                          playbackSpeed === spd 
+                            ? "bg-[#E50914] border-[#E50914] text-white" 
+                            : "bg-[#1E1E1E] border-white/5 hover:bg-white/5 text-gray-300"
+                        }`}
+                      >
+                        {spd}x
+                      </button>
+                    ))}
                   </div>
                 </div>
-              )}
-            </div>
-          )}
-
-          {selectedServerId >= 1000 && (
-            <span className="text-xs text-gray-500 font-medium italic select-none">
-              ℹ Subtitles, audio, and quality options are available inside the player window.
-            </span>
-          )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Episode Search / Jump Widget (TV shows only) */}
@@ -764,6 +689,9 @@ export default function VideoPlayer({
 // ────────────────────────────────────────────────────────────────────────
 // 🎬 CustomPlayer Video Controls (hls.js integration)
 // ────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────
+// 🎬 CustomPlayer Video Controls (hls.js integration)
+// ────────────────────────────────────────────────────────────────────────
 interface CustomPlayerProps {
   url: string;
   captions: any[];
@@ -775,6 +703,7 @@ interface CustomPlayerProps {
   autoPlay: boolean;
   autoNext: boolean;
   playbackSpeed: number;
+  onSpeedChange?: (speed: number) => void;
   mediaId: string;
   season: number;
   episode: number;
@@ -792,6 +721,7 @@ function CustomPlayer({
   autoPlay,
   autoNext,
   playbackSpeed,
+  onSpeedChange,
   mediaId,
   season,
   episode,
@@ -810,6 +740,35 @@ function CustomPlayer({
   const [isSubtitleOpen, setIsSubtitleOpen] = useState(false);
   
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Gesture indicators & overlays
+  const [doubleTapLeft, setDoubleTapLeft] = useState(false);
+  const [doubleTapRight, setDoubleTapRight] = useState(false);
+  const [longPressActive, setLongPressActive] = useState(false);
+  const [brightness, setBrightness] = useState(1.0);
+  const [showBrightnessIndicator, setShowBrightnessIndicator] = useState(false);
+  const [showVolumeIndicator, setShowVolumeIndicator] = useState(false);
+
+  // Speed and Scrub indicators
+  const [speedIndicatorVal, setSpeedIndicatorVal] = useState<number | null>(null);
+  const [showSpeedIndicator, setShowSpeedIndicator] = useState(false);
+  const [scrubPreviewTime, setScrubPreviewTime] = useState<number | null>(null);
+  const [showScrubIndicator, setShowScrubIndicator] = useState(false);
+
+  // Auto Next countdown state
+  const [showNextCountdown, setShowNextCountdown] = useState(false);
+  const [countdownSeconds, setCountdownSeconds] = useState(20);
+  const [ignoreCountdown, setIgnoreCountdown] = useState(false);
+
+  // Gesture & timers refs
+  const touchStartRef = useRef<{ x: number; y: number; time: number; scrubTime: number } | null>(null);
+  const touchTypeRef = useRef<"brightness" | "volume" | "scrub" | null>(null);
+  const initialValRef = useRef<number>(0);
+  const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const volumeIndicatorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const speedIndicatorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasRestoredProgressRef = useRef(false);
 
   // Set speed
   useEffect(() => {
@@ -859,6 +818,13 @@ function CustomPlayer({
     };
   }, [url, autoPlay]);
 
+  // Track stream switching for progress restore
+  useEffect(() => {
+    hasRestoredProgressRef.current = false;
+    setShowNextCountdown(false);
+    setIgnoreCountdown(false);
+  }, [url]);
+
   // Save progress percentage to localStorage
   const handleTimeUpdate = () => {
     const video = videoRef.current;
@@ -866,31 +832,71 @@ function CustomPlayer({
     const cur = video.currentTime;
     setCurrentTime(cur);
 
-    // Save watched progress to localStorage
     const dur = video.duration || duration;
     if (dur > 0) {
       const percentage = Math.round((cur / dur) * 100);
       try {
-        const stored = localStorage.getItem("plexoria_watched_progress") || "{}";
-        const progressMap = JSON.parse(stored);
+        // Save to classic watched progress map
+        const storedProgress = localStorage.getItem("plexoria_watched_progress") || "{}";
+        const progressMap = JSON.parse(storedProgress);
         const key = `${mediaId}_${season}_${episode}`;
         
-        // Only save if it's substantial, and delete if ended
         if (percentage > 95) {
           progressMap[key] = 100;
         } else if (percentage > 1) {
           progressMap[key] = percentage;
         }
         localStorage.setItem("plexoria_watched_progress", JSON.stringify(progressMap));
+
+        // Save detailed playback state map (resuming exactly where they left off)
+        const storedStates = localStorage.getItem("plexoria_playback_states") || "{}";
+        const playbackStates = JSON.parse(storedStates);
+        playbackStates[key] = {
+          timestamp: cur,
+          progress: percentage,
+          quality: activeResolution,
+          speed: playbackSpeed,
+          subtitle: activeSubtitle,
+          updatedAt: Date.now()
+        };
+        localStorage.setItem("plexoria_playback_states", JSON.stringify(playbackStates));
       } catch (e) {
         console.error(e);
+      }
+
+      // Up Next Episode Countdown (final 20 seconds)
+      const timeRemaining = dur - cur;
+      if (dur > 60 && timeRemaining <= 20 && timeRemaining > 0.5 && !ignoreCountdown && autoNext) {
+        setShowNextCountdown(true);
+        setCountdownSeconds(Math.ceil(timeRemaining));
+      } else {
+        setShowNextCountdown(false);
       }
     }
   };
 
   const handleLoadedMetadata = () => {
-    if (videoRef.current) {
-      setDuration(videoRef.current.duration);
+    const video = videoRef.current;
+    if (!video) return;
+    setDuration(video.duration);
+
+    // Auto-Resume watched progress on load
+    if (!hasRestoredProgressRef.current) {
+      try {
+        const key = `${mediaId}_${season}_${episode}`;
+        const storedStates = localStorage.getItem("plexoria_playback_states") || "{}";
+        const playbackStates = JSON.parse(storedStates);
+        const savedState = playbackStates[key];
+
+        if (savedState && savedState.timestamp > 2) {
+          console.log(`[Resume Playback] Restoring position to ${savedState.timestamp}s`);
+          video.currentTime = savedState.timestamp;
+          setCurrentTime(savedState.timestamp);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+      hasRestoredProgressRef.current = true;
     }
   };
 
@@ -984,17 +990,398 @@ function CustomPlayer({
     }
   };
 
+  // Keyboard shortcuts event listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if focus is in search box or inputs
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA" || activeEl.getAttribute("contenteditable") === "true")) {
+        return;
+      }
+
+      const video = videoRef.current;
+      if (!video) return;
+
+      switch (e.key.toLowerCase()) {
+        case " ":
+          e.preventDefault();
+          handlePlayPause();
+          break;
+        case "arrowleft":
+          e.preventDefault();
+          video.currentTime = Math.max(0, video.currentTime - 5);
+          setDoubleTapLeft(true);
+          setTimeout(() => setDoubleTapLeft(false), 500);
+          break;
+        case "arrowright":
+          e.preventDefault();
+          video.currentTime = Math.min(video.duration || 99999, video.currentTime + 5);
+          setDoubleTapRight(true);
+          setTimeout(() => setDoubleTapRight(false), 500);
+          break;
+        case "arrowup":
+          e.preventDefault();
+          const incVol = Math.min(1.0, video.volume + 0.1);
+          video.volume = incVol;
+          setVolume(incVol);
+          setIsMuted(incVol === 0);
+          setShowVolumeIndicator(true);
+          if (volumeIndicatorTimeoutRef.current) clearTimeout(volumeIndicatorTimeoutRef.current);
+          volumeIndicatorTimeoutRef.current = setTimeout(() => setShowVolumeIndicator(false), 800);
+          break;
+        case "arrowdown":
+          e.preventDefault();
+          const decVol = Math.max(0.0, video.volume - 0.1);
+          video.volume = decVol;
+          setVolume(decVol);
+          setIsMuted(decVol === 0);
+          setShowVolumeIndicator(true);
+          if (volumeIndicatorTimeoutRef.current) clearTimeout(volumeIndicatorTimeoutRef.current);
+          volumeIndicatorTimeoutRef.current = setTimeout(() => setShowVolumeIndicator(false), 800);
+          break;
+        case "f":
+          e.preventDefault();
+          toggleFullscreen();
+          break;
+        case "m":
+          e.preventDefault();
+          toggleMute();
+          break;
+        case "c":
+          e.preventDefault();
+          if (activeSubtitle) {
+            onSubtitleChange("");
+          } else if (captions && captions.length > 0) {
+            onSubtitleChange(captions[0].url);
+          }
+          break;
+        case "s":
+          e.preventDefault();
+          // Cycle speed: 0.5 -> 1.0 -> 1.25 -> 1.5 -> 2.0 -> 0.5
+          const speeds = [0.5, 1.0, 1.25, 1.5, 2.0];
+          const curIndex = speeds.indexOf(playbackSpeed);
+          const nextSpeed = speeds[(curIndex + 1) % speeds.length];
+          if (onSpeedChange) {
+            onSpeedChange(nextSpeed);
+          }
+          setSpeedIndicatorVal(nextSpeed);
+          setShowSpeedIndicator(true);
+          if (speedIndicatorTimeoutRef.current) clearTimeout(speedIndicatorTimeoutRef.current);
+          speedIndicatorTimeoutRef.current = setTimeout(() => setShowSpeedIndicator(false), 800);
+          break;
+        case "escape":
+          if (document.fullscreenElement) {
+            e.preventDefault();
+            document.exitFullscreen();
+          }
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isPlaying, volume, isMuted, isFullscreen, activeSubtitle, captions, playbackSpeed, onSpeedChange]);
+
+  // Click handler wrapper supporting single tap controls and double tap seeks
+  const handlePlayerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const isLeft = x < rect.width / 2;
+
+    if (e.detail === 2) {
+      // Double tap detected! Clear single tap timer.
+      if (clickTimeoutRef.current) {
+        clearTimeout(clickTimeoutRef.current);
+        clickTimeoutRef.current = null;
+      }
+
+      const video = videoRef.current;
+      if (!video) return;
+
+      if (isLeft) {
+        video.currentTime = Math.max(0, video.currentTime - 5);
+        setDoubleTapLeft(true);
+        setTimeout(() => setDoubleTapLeft(false), 500);
+      } else {
+        video.currentTime = Math.min(video.duration || 99999, video.currentTime + 5);
+        setDoubleTapRight(true);
+        setTimeout(() => setDoubleTapRight(false), 500);
+      }
+    } else {
+      // Single tap timer
+      if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = setTimeout(() => {
+        setShowControls(prev => !prev);
+      }, 260);
+    }
+  };
+
+  // Long press for temporary 2x speed controls
+  const handleMouseDown = () => {
+    if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current);
+    longPressTimeoutRef.current = setTimeout(() => {
+      const video = videoRef.current;
+      if (video) {
+        video.playbackRate = 2.0;
+        setLongPressActive(true);
+      }
+    }, 450);
+  };
+
+  const handleMouseUp = () => {
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+    if (longPressActive) {
+      const video = videoRef.current;
+      if (video) {
+        video.playbackRate = playbackSpeed;
+      }
+      setLongPressActive(false);
+    }
+  };
+
+  // Fullscreen touch swipe handler (brightness, volume, and scrub)
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+
+    touchStartRef.current = { x, y, time: Date.now(), scrubTime: currentTime };
+
+    if (!isFullscreen) {
+      // Swipe gestures (scrubbing only if not in fullscreen)
+      touchTypeRef.current = "scrub";
+      initialValRef.current = currentTime;
+    } else {
+      // Left side brightness, right side volume if in fullscreen
+      if (x < rect.width / 2) {
+        touchTypeRef.current = "brightness";
+        initialValRef.current = brightness;
+      } else {
+        touchTypeRef.current = "volume";
+        initialValRef.current = volume;
+      }
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!touchStartRef.current || !touchTypeRef.current) return;
+    const touch = e.touches[0];
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+
+    const deltaX = x - touchStartRef.current.x;
+    const deltaY = touchStartRef.current.y - y;
+
+    // Detect if swipe is horizontal scrub
+    if (touchTypeRef.current === "scrub" || (!isFullscreen && Math.abs(deltaX) > Math.abs(deltaY) * 1.5)) {
+      touchTypeRef.current = "scrub";
+      const scrubRatio = deltaX / rect.width;
+      const scrubRange = Math.min(600, duration || 100);
+      const targetScrubTime = Math.min(duration || 100, Math.max(0, touchStartRef.current.scrubTime + scrubRatio * scrubRange));
+      setScrubPreviewTime(targetScrubTime);
+      setShowScrubIndicator(true);
+      return;
+    }
+
+    if (!isFullscreen) return;
+
+    // Vertical movements in fullscreen
+    const percentChange = deltaY / rect.height;
+    if (touchTypeRef.current === "brightness") {
+      const newVal = Math.min(1.0, Math.max(0.1, initialValRef.current + percentChange));
+      setBrightness(newVal);
+      setShowBrightnessIndicator(true);
+    } else if (touchTypeRef.current === "volume") {
+      const video = videoRef.current;
+      if (video) {
+        const newVal = Math.min(1.0, Math.max(0.0, initialValRef.current + percentChange));
+        video.volume = newVal;
+        setVolume(newVal);
+        setIsMuted(newVal === 0);
+        setShowVolumeIndicator(true);
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (touchTypeRef.current === "scrub" && scrubPreviewTime !== null) {
+      const video = videoRef.current;
+      if (video) {
+        video.currentTime = scrubPreviewTime;
+        setCurrentTime(scrubPreviewTime);
+      }
+      setScrubPreviewTime(null);
+      setShowScrubIndicator(false);
+    }
+
+    setTimeout(() => {
+      setShowBrightnessIndicator(false);
+      setShowVolumeIndicator(false);
+    }, 800);
+    touchStartRef.current = null;
+    touchTypeRef.current = null;
+  };
+
+  // Mouse wheel volume controls
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.05 : -0.05;
+    const newVolume = Math.min(1.0, Math.max(0.0, video.volume + delta));
+    video.volume = newVolume;
+    setVolume(newVolume);
+    setIsMuted(newVolume === 0);
+    setShowVolumeIndicator(true);
+
+    if (volumeIndicatorTimeoutRef.current) clearTimeout(volumeIndicatorTimeoutRef.current);
+    volumeIndicatorTimeoutRef.current = setTimeout(() => {
+      setShowVolumeIndicator(false);
+    }, 800);
+  };
+
   return (
     <div 
-      className="relative w-full h-full group/player overflow-hidden flex items-center justify-center bg-black"
+      className="relative w-full h-full group/player overflow-hidden flex items-center justify-center bg-black select-none"
       onMouseMove={() => {
         setShowControls(true);
       }}
+      onClick={handlePlayerClick}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onTouchStart={(e) => {
+        handleTouchStart(e);
+        handleMouseDown();
+      }}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={() => {
+        handleTouchEnd();
+        handleMouseUp();
+      }}
+      onTouchCancel={() => {
+        handleTouchEnd();
+        handleMouseUp();
+      }}
+      onWheel={handleWheel}
     >
+      {/* Simulated Brightness Dark Overlay */}
+      <div 
+        className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-150 z-20"
+        style={{ opacity: 1 - brightness }}
+      />
+
+      {/* Double Tap Seek Feedback Circles */}
+      {doubleTapLeft && (
+        <div className="animate-ping-once-left pointer-events-none z-30 flex flex-col items-center justify-center bg-black/60 backdrop-blur-md rounded-full w-20 h-20 text-white border border-white/15">
+          <span className="text-xl">⏮</span>
+          <span className="text-[10px] font-extrabold font-mono mt-1">-5s</span>
+        </div>
+      )}
+      {doubleTapRight && (
+        <div className="animate-ping-once-right pointer-events-none z-30 flex flex-col items-center justify-center bg-black/60 backdrop-blur-md rounded-full w-20 h-20 text-white border border-white/15">
+          <span className="text-xl">⏭</span>
+          <span className="text-[10px] font-extrabold font-mono mt-1">+5s</span>
+        </div>
+      )}
+
+      {/* Pulsing 2x Playback Speed Indicator Badge */}
+      {longPressActive && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-[#E50914] text-white text-[9px] font-extrabold px-3 py-1.5 rounded-full shadow-lg border border-[#E50914]/25 tracking-widest uppercase z-30">
+          ⚡ 2X SPEED HOLDING
+        </div>
+      )}
+
+      {/* Speed Indicator Badge */}
+      {showSpeedIndicator && speedIndicatorVal !== null && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-md text-white text-[9px] font-extrabold px-3 py-1.5 rounded-full shadow-lg border border-white/10 tracking-widest uppercase z-30 pointer-events-none">
+          ⚡ Speed: {speedIndicatorVal}x
+        </div>
+      )}
+
+      {/* Horizontal Swipe Timeline Scrub Indicator Overlay */}
+      {showScrubIndicator && scrubPreviewTime !== null && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/80 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex flex-col items-center gap-1 shadow-2xl z-30 pointer-events-none">
+          <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider">Seek to</span>
+          <span className="text-white text-lg font-mono font-bold text-center">{formatTime(scrubPreviewTime)}</span>
+          <span className="text-[9px] text-[#E50914] font-medium mt-1">
+            {scrubPreviewTime > currentTime ? `▶ Forward ${formatTime(scrubPreviewTime - currentTime)}` : `◀ Rewind ${formatTime(currentTime - scrubPreviewTime)}`}
+          </span>
+        </div>
+      )}
+
+      {/* Brightness Level Indicator */}
+      {showBrightnessIndicator && (
+        <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 bg-black/70 backdrop-blur-md border border-white/10 rounded-full px-2.5 py-4 z-30 text-[10px] pointer-events-none">
+          <span className="text-white">☀️</span>
+          <div className="w-1 h-20 bg-white/20 rounded-full overflow-hidden relative">
+            <div 
+              className="absolute bottom-0 left-0 right-0 bg-white transition-all duration-75"
+              style={{ height: `${brightness * 100}%` }}
+            />
+          </div>
+          <span className="text-white font-extrabold font-mono text-[8px]">{Math.round(brightness * 100)}%</span>
+        </div>
+      )}
+
+      {/* Volume Level Indicator */}
+      {showVolumeIndicator && (
+        <div className="absolute right-6 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 bg-black/70 backdrop-blur-md border border-white/10 rounded-full px-2.5 py-4 z-30 text-[10px] pointer-events-none">
+          <span className="text-white">🔊</span>
+          <div className="w-1 h-20 bg-white/20 rounded-full overflow-hidden relative">
+            <div 
+              className="absolute bottom-0 left-0 right-0 bg-[#E50914] transition-all duration-75"
+              style={{ height: `${volume * 100}%` }}
+            />
+          </div>
+          <span className="text-white font-extrabold font-mono text-[8px]">{Math.round(volume * 100)}%</span>
+        </div>
+      )}
+
+      {/* Auto Play Up Next Countdown Box Overlay (final 20 seconds) */}
+      {showNextCountdown && (
+        <div className="absolute bottom-16 right-6 bg-black/85 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex flex-col gap-3 shadow-2xl z-30 w-64 animate-slide-right">
+          <span className="text-[9px] text-[#E50914] font-extrabold tracking-widest uppercase block border-b border-white/5 pb-1">Up Next</span>
+          <div className="flex justify-between items-center">
+            <span className="text-white text-xs font-bold truncate max-w-[140px]">Episode {episode + 1}</span>
+            <span className="text-[10px] text-gray-400 font-mono font-bold">in {countdownSeconds}s</span>
+          </div>
+          <div className="flex gap-2 text-[10px] font-bold">
+            <button 
+              onClick={() => {
+                setShowNextCountdown(false);
+                if (onEnded) onEnded();
+              }}
+              className="flex-grow py-2 rounded-lg bg-[#E50914] text-white hover:bg-[#B91C1C] transition-colors"
+            >
+              Play Now
+            </button>
+            <button 
+              onClick={() => {
+                setShowNextCountdown(false);
+                setIgnoreCountdown(true);
+              }}
+              className="flex-grow py-2 rounded-lg bg-white/10 text-white hover:bg-white/15 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Big Play Button Overlay in center when paused */}
       {!isPlaying && (
         <div 
-          onClick={handlePlayPause}
+          onClick={(e) => {
+            e.stopPropagation();
+            handlePlayPause();
+          }}
           className="absolute w-16 h-16 rounded-full bg-black/60 hover:bg-[#E50914]/90 text-white flex items-center justify-center cursor-pointer shadow-2xl transition-all duration-300 z-30 transform hover:scale-110 active:scale-95"
         >
           <Play size={26} className="fill-current ml-0.5" />
@@ -1006,8 +1393,7 @@ function CustomPlayer({
         onLoadedMetadata={handleLoadedMetadata}
         onDurationChange={handleLoadedMetadata}
         onEnded={handleVideoEnded}
-        onClick={handlePlayPause}
-        className="w-full h-full object-contain cursor-pointer"
+        className="w-full h-full object-contain cursor-pointer z-10"
       >
         {activeSubtitle && (
           <track
@@ -1022,7 +1408,8 @@ function CustomPlayer({
 
       {/* Control Bar */}
       <div 
-        className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col gap-3 transition-opacity duration-300 ${
+        onClick={(e) => e.stopPropagation()} // Prevent click-through triggers
+        className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col gap-3 transition-opacity duration-300 z-30 ${
           showControls ? "opacity-100" : "opacity-0"
         }`}
       >
