@@ -45,6 +45,13 @@ interface ServerConfig {
   dub: string;
 }
 
+const BACKUP_SERVERS: ServerConfig[] = [
+  { id: 1001, name: "Backup Server 1 (VidLink - 1080p)", status: "active", dub: "" },
+  { id: 1002, name: "Backup Server 2 (AutoEmbed - Multilingual)", status: "active", dub: "" },
+  { id: 1003, name: "Backup Server 3 (Embed.su - High Speed)", status: "active", dub: "" },
+  { id: 1004, name: "Backup Server 4 (Vidsrc.to - Multilingual)", status: "active", dub: "" }
+];
+
 export default function VideoPlayer({
   mediaType,
   id,
@@ -121,6 +128,11 @@ export default function VideoPlayer({
   useEffect(() => {
     let isMounted = true;
     const fetchMovieBoxStreams = async () => {
+      if (selectedServerId >= 1000) {
+        setIsLoadingStream(false);
+        setStreamError(null);
+        return;
+      }
       setIsLoadingStream(true);
       setStreamError(null);
       try {
@@ -198,9 +210,9 @@ export default function VideoPlayer({
           setActiveSubtitle("");
         }
       } catch (err: any) {
-        console.error(err);
+        console.error("MovieBox stream resolver failed. Falling back to Backup Server 1 (VidLink):", err);
         if (isMounted) {
-          setStreamError(err.message || "Failed to resolve streams.");
+          setSelectedServerId(1001);
         }
       } finally {
         if (isMounted) {
@@ -265,6 +277,26 @@ export default function VideoPlayer({
     : [];
 
   const selectedServer = availableServers.find(s => s.id === selectedServerId) || availableServers[0];
+
+  // Determine if backup player should be rendered and build its embed URL
+  let backupUrl = "";
+  if (selectedServerId === 1001) {
+    backupUrl = mediaType === "movie" 
+      ? `https://vidlink.pro/movie/${imdbId || id}?primaryColor=E50914`
+      : `https://vidlink.pro/tv/${imdbId || id}/${season}/${episode}?primaryColor=E50914`;
+  } else if (selectedServerId === 1002) {
+    backupUrl = mediaType === "movie"
+      ? `https://player.autoembed.cc/movie/${id}`
+      : `https://player.autoembed.cc/tv/${id}/${season}/${episode}`;
+  } else if (selectedServerId === 1003) {
+    backupUrl = mediaType === "movie"
+      ? `https://embed.su/embed/movie/${imdbId || id}`
+      : `https://embed.su/embed/tv/${imdbId || id}/${season}/${episode}`;
+  } else if (selectedServerId === 1004) {
+    backupUrl = mediaType === "movie"
+      ? `https://vidsrc.to/embed/movie/${imdbId || id}`
+      : `https://vidsrc.to/embed/tv/${imdbId || id}/${season}/${episode}`;
+  }
 
   return (
     <div className="w-full flex flex-col gap-4 relative z-20">
@@ -333,6 +365,17 @@ export default function VideoPlayer({
               <div className="w-10 h-10 rounded-full border-4 border-[#E50914]/20 border-t-[#E50914] animate-spin"></div>
               <span className="text-xs text-gray-400 font-semibold">Resolving secure streams...</span>
             </div>
+          ) : selectedServerId >= 1000 ? (
+            hasClickedPlay && backupUrl ? (
+              <iframe
+                src={backupUrl}
+                className="w-full h-full border-0"
+                allowFullScreen
+                allow="autoplay; encrypted-media; picture-in-picture"
+              />
+            ) : (
+              <div className="text-gray-500 text-xs">Ready to Stream via Backup Mirror</div>
+            )
           ) : streamError ? (
             <div className="relative w-full h-full bg-black flex flex-col items-center justify-center p-6 gap-4">
               <div className="text-center space-y-1 max-w-sm">
@@ -395,12 +438,17 @@ export default function VideoPlayer({
               }}
               className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
             >
-              <span>Server: {selectedServer.dub === "hindi" ? "Hindi DUB" : "English SUB"}</span>
+              <span>Server: {
+                selectedServerId >= 1000 
+                  ? (BACKUP_SERVERS.find(s => s.id === selectedServerId)?.name.replace("Backup Server ", "Mirror ") || "Backup")
+                  : (selectedServer.dub === "hindi" ? "Hindi DUB" : "English SUB")
+              }</span>
               <ChevronDown size={14} className="text-gray-400" />
             </button>
 
             {isServerOpen && (
-              <div className="absolute left-0 bottom-12 mb-1 w-64 bg-[#171717] border border-white/10 rounded-[14px] p-1.5 flex flex-col gap-0.5 shadow-2xl z-50">
+              <div className="absolute left-0 bottom-12 mb-1 w-64 bg-[#171717]/95 backdrop-blur-md border border-white/10 rounded-[14px] p-1.5 flex flex-col gap-0.5 shadow-2xl z-50">
+                <span className="px-2.5 py-1 text-[9px] text-gray-500 font-extrabold uppercase tracking-wider">HLS Streams</span>
                 {availableServers.map((srv) => (
                   <button
                     key={srv.id}
@@ -418,134 +466,163 @@ export default function VideoPlayer({
                     {srv.id === selectedServerId && <Check size={12} className="text-[#E50914]" />}
                   </button>
                 ))}
-              </div>
-            )}
-          </div>
 
-          {/* Subtitles (CC) selection */}
-          <div className="relative">
-            <button 
-              onClick={() => {
-                setIsSubtitleOpen(!isSubtitleOpen);
-                setIsServerOpen(false);
-                setIsPlaybackMenuOpen(false);
-              }}
-              className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
-            >
-              <span>Subtitles: {activeSubtitle ? "On" : "Off"}</span>
-              <ChevronDown size={14} className="text-gray-400" />
-            </button>
-
-            {isSubtitleOpen && (
-              <div className="absolute left-0 bottom-12 mb-1 w-48 bg-[#171717] border border-white/10 rounded-[14px] p-1.5 flex flex-col gap-0.5 shadow-2xl max-h-48 overflow-y-auto z-50">
-                <button
-                  onClick={() => {
-                    setActiveSubtitle("");
-                    setIsSubtitleOpen(false);
-                  }}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs font-semibold ${
-                    !activeSubtitle 
-                      ? "bg-[#E50914]/10 text-[#E50914]" 
-                      : "text-gray-300 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  <span>Off</span>
-                  {!activeSubtitle && <Check size={12} className="text-[#E50914]" />}
-                </button>
-                {captions.map((cap) => (
+                <span className="px-2.5 py-1.5 mt-1 border-t border-white/5 text-[9px] text-gray-500 font-extrabold uppercase tracking-wider block">Backup Mirrors</span>
+                {BACKUP_SERVERS.map((srv) => (
                   <button
-                    key={cap.id}
+                    key={srv.id}
                     onClick={() => {
-                      setActiveSubtitle(cap.url);
-                      setIsSubtitleOpen(false);
+                      setSelectedServerId(srv.id);
+                      setIsServerOpen(false);
                     }}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs font-semibold ${
-                      cap.url === activeSubtitle 
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-xs font-semibold transition-colors ${
+                      srv.id === selectedServerId 
                         ? "bg-[#E50914]/10 text-[#E50914]" 
                         : "text-gray-300 hover:bg-white/5 hover:text-white"
                     }`}
                   >
-                    <span>{cap.language}</span>
-                    {cap.url === activeSubtitle && <Check size={12} className="text-[#E50914]" />}
+                    <span>⚡ {srv.name.replace("Backup Server ", "Mirror ")}</span>
+                    {srv.id === selectedServerId && <Check size={12} className="text-[#E50914]" />}
                   </button>
                 ))}
               </div>
             )}
           </div>
 
+          {/* Subtitles (CC) selection */}
+          {selectedServerId < 1000 && (
+            <div className="relative">
+              <button 
+                onClick={() => {
+                  setIsSubtitleOpen(!isSubtitleOpen);
+                  setIsServerOpen(false);
+                  setIsPlaybackMenuOpen(false);
+                }}
+                className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
+              >
+                <span>Subtitles: {activeSubtitle ? "On" : "Off"}</span>
+                <ChevronDown size={14} className="text-gray-400" />
+              </button>
+
+              {isSubtitleOpen && (
+                <div className="absolute left-0 bottom-12 mb-1 w-48 bg-[#171717] border border-white/10 rounded-[14px] p-1.5 flex flex-col gap-0.5 shadow-2xl max-h-48 overflow-y-auto z-50">
+                  <button
+                    onClick={() => {
+                      setActiveSubtitle("");
+                      setIsSubtitleOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs font-semibold ${
+                      !activeSubtitle 
+                        ? "bg-[#E50914]/10 text-[#E50914]" 
+                        : "text-gray-300 hover:bg-white/5 hover:text-white"
+                    }`}
+                  >
+                    <span>Off</span>
+                    {!activeSubtitle && <Check size={12} className="text-[#E50914]" />}
+                  </button>
+                  {captions.map((cap) => (
+                    <button
+                      key={cap.id}
+                      onClick={() => {
+                        setActiveSubtitle(cap.url);
+                        setIsSubtitleOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs font-semibold ${
+                        cap.url === activeSubtitle 
+                          ? "bg-[#E50914]/10 text-[#E50914]" 
+                          : "text-gray-300 hover:bg-white/5 hover:text-white"
+                      }`}
+                    >
+                      <span>{cap.language}</span>
+                      {cap.url === activeSubtitle && <Check size={12} className="text-[#E50914]" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ⚙ Playback settings menu */}
-          <div className="relative">
-            <button 
-              onClick={() => {
-                setIsPlaybackMenuOpen(!isPlaybackMenuOpen);
-                setIsServerOpen(false);
-                setIsSubtitleOpen(false);
-              }}
-              className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
-            >
-              <Settings size={14} className="text-gray-400" />
-              <span>⚙ Playback</span>
-              <ChevronDown size={14} className="text-gray-400" />
-            </button>
+          {selectedServerId < 1000 && (
+            <div className="relative">
+              <button 
+                onClick={() => {
+                  setIsPlaybackMenuOpen(!isPlaybackMenuOpen);
+                  setIsServerOpen(false);
+                  setIsSubtitleOpen(false);
+                }}
+                className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
+              >
+                <Settings size={14} className="text-gray-400" />
+                <span>⚙ Playback</span>
+                <ChevronDown size={14} className="text-gray-400" />
+              </button>
 
-            {isPlaybackMenuOpen && (
-              <div className="absolute left-0 bottom-12 mb-1 w-64 bg-[#171717] border border-white/10 rounded-[14px] p-3 flex flex-col gap-3 shadow-2xl z-50">
-                <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider border-b border-white/5 pb-1">Playback Settings</span>
-                
-                <label className="flex items-center justify-between cursor-pointer text-xs text-gray-300 hover:text-white transition-colors">
-                  <span>Auto Play Next Episode</span>
-                  <input 
-                    type="checkbox" 
-                    checked={autoPlay} 
-                    onChange={(e) => setAutoPlay(e.target.checked)}
-                    className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
-                  />
-                </label>
+              {isPlaybackMenuOpen && (
+                <div className="absolute left-0 bottom-12 mb-1 w-64 bg-[#171717] border border-white/10 rounded-[14px] p-3 flex flex-col gap-3 shadow-2xl z-50">
+                  <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider border-b border-white/5 pb-1">Playback Settings</span>
+                  
+                  <label className="flex items-center justify-between cursor-pointer text-xs text-gray-300 hover:text-white transition-colors">
+                    <span>Auto Play Next Episode</span>
+                    <input 
+                      type="checkbox" 
+                      checked={autoPlay} 
+                      onChange={(e) => setAutoPlay(e.target.checked)}
+                      className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
+                    />
+                  </label>
 
-                <label className="flex items-center justify-between cursor-pointer text-xs text-gray-300 hover:text-white transition-colors">
-                  <span>Auto Next Episode (Ended)</span>
-                  <input 
-                    type="checkbox" 
-                    checked={autoNext} 
-                    onChange={(e) => setAutoNext(e.target.checked)}
-                    className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
-                  />
-                </label>
+                  <label className="flex items-center justify-between cursor-pointer text-xs text-gray-300 hover:text-white transition-colors">
+                    <span>Auto Next Episode (Ended)</span>
+                    <input 
+                      type="checkbox" 
+                      checked={autoNext} 
+                      onChange={(e) => setAutoNext(e.target.checked)}
+                      className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
+                    />
+                  </label>
 
-                <label className="flex items-center justify-between cursor-pointer text-xs text-gray-300 hover:text-white transition-colors">
-                  <span>Dim Lights Background</span>
-                  <input 
-                    type="checkbox" 
-                    checked={dimLights} 
-                    onChange={(e) => setDimLights(e.target.checked)}
-                    className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
-                  />
-                </label>
+                  <label className="flex items-center justify-between cursor-pointer text-xs text-gray-300 hover:text-white transition-colors">
+                    <span>Dim Lights Background</span>
+                    <input 
+                      type="checkbox" 
+                      checked={dimLights} 
+                      onChange={(e) => setDimLights(e.target.checked)}
+                      className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
+                    />
+                  </label>
 
-                <div className="flex flex-col gap-1.5 border-t border-white/5 pt-2">
-                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Speed:</span>
-                  <div className="flex gap-1">
-                    {[0.5, 1, 1.25, 1.5, 2].map((spd) => (
-                      <button
-                        key={spd}
-                        onClick={() => {
-                          setPlaybackSpeed(spd);
-                          setIsPlaybackMenuOpen(false);
-                        }}
-                        className={`flex-1 py-1 rounded text-[10px] font-bold text-center border transition-all ${
-                          playbackSpeed === spd 
-                            ? "bg-[#E50914] border-[#E50914] text-white" 
-                            : "bg-[#1E1E1E] border-white/5 hover:bg-white/5 text-gray-300"
-                        }`}
-                      >
-                        {spd}x
-                      </button>
-                    ))}
+                  <div className="flex flex-col gap-1.5 border-t border-white/5 pt-2">
+                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Speed:</span>
+                    <div className="flex gap-1">
+                      {[0.5, 1, 1.25, 1.5, 2].map((spd) => (
+                        <button
+                          key={spd}
+                          onClick={() => {
+                            setPlaybackSpeed(spd);
+                            setIsPlaybackMenuOpen(false);
+                          }}
+                          className={`flex-1 py-1 rounded text-[10px] font-bold text-center border transition-all ${
+                            playbackSpeed === spd 
+                              ? "bg-[#E50914] border-[#E50914] text-white" 
+                              : "bg-[#1E1E1E] border-white/5 hover:bg-white/5 text-gray-300"
+                          }`}
+                        >
+                          {spd}x
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
+
+          {selectedServerId >= 1000 && (
+            <span className="text-xs text-gray-500 font-medium italic select-none">
+              ℹ Subtitles, audio, and quality options are available inside the player window.
+            </span>
+          )}
         </div>
 
         {/* Episode Search / Jump Widget (TV shows only) */}
