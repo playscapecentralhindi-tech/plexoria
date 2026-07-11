@@ -1,0 +1,11 @@
+RewriteEngine On
+RewriteBase /
+
+# Route API calls to PHP endpoint
+RewriteRule ^api/moviebox/play$ api/moviebox/play/index.php [L,QSA]
+
+# Serve .html files without showing the extension in the URL
+# e.g. /movie?id=123 -> /movie.html?id=123
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}\.html -f
+RewriteRule ^([^\.\?]+)$ $1.html [NC,L]
