@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { 
   Play, 
+  Pause,
   Volume2, 
   VolumeX, 
   Maximize2, 
@@ -12,11 +13,21 @@ import {
   Heart, 
   Check, 
   ChevronDown, 
+  ChevronRight,
   Tv, 
   Sparkles,
   ArrowRight,
   HelpCircle,
-  Undo2
+  Undo2,
+  Lock,
+  Unlock,
+  RotateCcw,
+  RotateCw,
+  Clock,
+  Subtitles,
+  Volume1,
+  Sun,
+  Loader2
 } from "lucide-react";
 import Hls from "hls.js";
 
@@ -368,6 +379,7 @@ export default function VideoPlayer({
                 season={season}
                 episode={episode}
                 onEnded={handleNextEpisode}
+                posterUrl={posterUrl}
               />
             ) : (
               <div className="text-gray-500 text-xs">Ready to Stream</div>
@@ -688,9 +700,6 @@ export default function VideoPlayer({
 // ────────────────────────────────────────────────────────────────────────
 // 🎬 CustomPlayer Video Controls (hls.js integration)
 // ────────────────────────────────────────────────────────────────────────
-// ────────────────────────────────────────────────────────────────────────
-// 🎬 CustomPlayer Video Controls (hls.js integration)
-// ────────────────────────────────────────────────────────────────────────
 interface CustomPlayerProps {
   url: string;
   captions: any[];
@@ -707,6 +716,7 @@ interface CustomPlayerProps {
   season: number;
   episode: number;
   onEnded: () => void;
+  posterUrl?: string;
 }
 
 function CustomPlayer({
@@ -724,9 +734,11 @@ function CustomPlayer({
   mediaId,
   season,
   episode,
-  onEnded
+  onEnded,
+  posterUrl = ""
 }: CustomPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -735,12 +747,17 @@ function CustomPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   
-  const [isResolutionOpen, setIsResolutionOpen] = useState(false);
-  const [isSubtitleOpen, setIsSubtitleOpen] = useState(false);
+  // Settings menu states
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [activeMenu, setActiveMenu] = useState<"main" | "speed" | "quality" | "subtitle" | "sleep" | null>(null);
   
-  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Gesture indicators & overlays
+  // Custom HUD and Overlay indicators
+  const [hudText, setHudText] = useState<string | null>(null);
+  const [hudIcon, setHudIcon] = useState<string | null>(null);
+  const [showHud, setShowHud] = useState(false);
+  const hudTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Gesture states
   const [doubleTapLeft, setDoubleTapLeft] = useState(false);
   const [doubleTapRight, setDoubleTapRight] = useState(false);
   const [longPressActive, setLongPressActive] = useState(false);
@@ -748,11 +765,34 @@ function CustomPlayer({
   const [showBrightnessIndicator, setShowBrightnessIndicator] = useState(false);
   const [showVolumeIndicator, setShowVolumeIndicator] = useState(false);
 
-  // Speed and Scrub indicators
+  // Scrubber hover preview
+  const [hoverTime, setHoverTime] = useState(0);
+  const [hoverXPercent, setHoverXPercent] = useState(0);
+  const [showHoverTime, setShowHoverTime] = useState(false);
+  const [hoverChapterName, setHoverChapterName] = useState("");
+  const [bufferedRanges, setBufferedRanges] = useState<{ start: number; end: number }[]>([]);
   const [speedIndicatorVal, setSpeedIndicatorVal] = useState<number | null>(null);
   const [showSpeedIndicator, setShowSpeedIndicator] = useState(false);
   const [scrubPreviewTime, setScrubPreviewTime] = useState<number | null>(null);
   const [showScrubIndicator, setShowScrubIndicator] = useState(false);
+
+  // Mobile Lock controls
+  const [isLocked, setIsLocked] = useState(false);
+  const [showLockPrompt, setShowLockPrompt] = useState(false);
+  const lockPromptTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Picture in Picture
+  const [isPiPActive, setIsPiPActive] = useState(false);
+
+  // Aspect ratio fit mode (fit / cover / fill)
+  const [fitMode, setFitMode] = useState<"contain" | "cover" | "fill">("contain");
+
+  // Sleep Timer states
+  const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
+  const sleepTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Loading state
+  const [isVideoLoaded, setIsVideoLoaded] = useState(false);
 
   // Auto Next countdown state
   const [showNextCountdown, setShowNextCountdown] = useState(false);
@@ -765,11 +805,39 @@ function CustomPlayer({
   const initialValRef = useRef<number>(0);
   const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const volumeIndicatorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const speedIndicatorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasRestoredProgressRef = useRef(false);
 
-  // Set speed
+  // Chapters computation
+  const chaptersList = [
+    { name: "Intro", start: 0, end: duration * 0.1 },
+    { name: "Opening", start: duration * 0.1, end: duration * 0.18 },
+    { name: "Climax / Story", start: duration * 0.18, end: duration * 0.85 },
+    { name: "Ending Credits", start: duration * 0.85, end: duration }
+  ];
+
+  // Format time utility helper
+  const formatTime = (time: number) => {
+    if (isNaN(time)) return "00:00";
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  };
+
+  // HUD notification trigger
+  const triggerHud = (icon: string, text: string) => {
+    setHudIcon(icon);
+    setHudText(text);
+    setShowHud(true);
+    if (hudTimeoutRef.current) clearTimeout(hudTimeoutRef.current);
+    hudTimeoutRef.current = setTimeout(() => {
+      setShowHud(false);
+    }, 1000);
+  };
+
+  // Apply playback speed rate
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.playbackRate = playbackSpeed;
@@ -782,6 +850,7 @@ function CustomPlayer({
     if (!video) return;
 
     setIsPlaying(false);
+    setIsVideoLoaded(false);
     let hls: Hls | null = null;
 
     if (url.includes(".m3u8")) {
@@ -817,25 +886,56 @@ function CustomPlayer({
     };
   }, [url, autoPlay]);
 
-  // Track stream switching for progress restore
   useEffect(() => {
     hasRestoredProgressRef.current = false;
     setShowNextCountdown(false);
     setIgnoreCountdown(false);
   }, [url]);
 
-  // Save progress percentage to localStorage
+  // Sleep Timer Handler
+  useEffect(() => {
+    if (sleepTimerRef.current) clearInterval(sleepTimerRef.current);
+    if (sleepTimerMinutes !== null && isPlaying) {
+      let timeLeft = sleepTimerMinutes * 60;
+      sleepTimerRef.current = setInterval(() => {
+        timeLeft -= 1;
+        if (timeLeft <= 0) {
+          if (videoRef.current) {
+            videoRef.current.pause();
+            setIsPlaying(false);
+          }
+          setSleepTimerMinutes(null);
+          triggerHud("⏸", "Sleep Timer Paused Video");
+          clearInterval(sleepTimerRef.current!);
+        }
+      }, 1000);
+    }
+    return () => {
+      if (sleepTimerRef.current) clearInterval(sleepTimerRef.current);
+    };
+  }, [sleepTimerMinutes, isPlaying]);
+
+  // Time update progress & buffered tracking
   const handleTimeUpdate = () => {
     const video = videoRef.current;
     if (!video) return;
     const cur = video.currentTime;
     setCurrentTime(cur);
 
+    // Track buffering ranges
+    const ranges = [];
+    for (let i = 0; i < video.buffered.length; i++) {
+      ranges.push({
+        start: (video.buffered.start(i) / (video.duration || 1)) * 100,
+        end: (video.buffered.end(i) / (video.duration || 1)) * 100
+      });
+    }
+    setBufferedRanges(ranges);
+
     const dur = video.duration || duration;
     if (dur > 0) {
       const percentage = Math.round((cur / dur) * 100);
       try {
-        // Save to classic watched progress map
         const storedProgress = localStorage.getItem("plexoria_watched_progress") || "{}";
         const progressMap = JSON.parse(storedProgress);
         const key = `${mediaId}_${season}_${episode}`;
@@ -847,7 +947,6 @@ function CustomPlayer({
         }
         localStorage.setItem("plexoria_watched_progress", JSON.stringify(progressMap));
 
-        // Save detailed playback state map (resuming exactly where they left off)
         const storedStates = localStorage.getItem("plexoria_playback_states") || "{}";
         const playbackStates = JSON.parse(storedStates);
         playbackStates[key] = {
@@ -863,7 +962,7 @@ function CustomPlayer({
         console.error(e);
       }
 
-      // Up Next Episode Countdown (final 20 seconds)
+      // Next Episode countdown card trigger
       const timeRemaining = dur - cur;
       if (dur > 60 && timeRemaining <= 20 && timeRemaining > 0.5 && !ignoreCountdown && autoNext) {
         setShowNextCountdown(true);
@@ -879,7 +978,6 @@ function CustomPlayer({
     if (!video) return;
     setDuration(video.duration);
 
-    // Auto-Resume watched progress on load
     if (!hasRestoredProgressRef.current) {
       try {
         const key = `${mediaId}_${season}_${episode}`;
@@ -901,37 +999,44 @@ function CustomPlayer({
 
   // Hide controls on inactivity
   useEffect(() => {
-    if (showControls && isPlaying) {
+    if (showControls && isPlaying && !isLocked) {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
       controlsTimeoutRef.current = setTimeout(() => {
         setShowControls(false);
+        setIsSettingsOpen(false);
       }, 3000);
     }
     return () => {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
-  }, [showControls, isPlaying]);
+  }, [showControls, isPlaying, isLocked]);
 
   const handlePlayPause = () => {
+    if (isLocked) {
+      triggerLockPrompt();
+      return;
+    }
     const video = videoRef.current;
     if (!video) return;
 
     if (isPlaying) {
       video.pause();
       setIsPlaying(false);
+      triggerHud("⏸", "Paused");
     } else {
       video.play().then(() => {
         setIsPlaying(true);
+        triggerHud("▶", "Playing");
       }).catch(err => console.error(err));
     }
   };
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Drag Seek
+  const handleSeekChange = (time: number) => {
     const video = videoRef.current;
     if (!video) return;
-    const seekTime = parseFloat(e.target.value);
-    video.currentTime = seekTime;
-    setCurrentTime(seekTime);
+    video.currentTime = time;
+    setCurrentTime(time);
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -949,21 +1054,57 @@ function CustomPlayer({
     const nextMuted = !isMuted;
     video.muted = nextMuted;
     setIsMuted(nextMuted);
+    triggerHud(nextMuted ? "🔇" : "🔊", nextMuted ? "Muted" : `${Math.round(volume * 100)}%`);
   };
 
   const toggleFullscreen = () => {
-    const container = videoRef.current?.parentElement;
+    const container = containerRef.current;
     if (!container) return;
 
     if (!document.fullscreenElement) {
       container.requestFullscreen().then(() => {
         setIsFullscreen(true);
-      }).catch(err => {
-        console.error("Fullscreen failed:", err);
-      });
+      }).catch(err => console.error(err));
     } else {
       document.exitFullscreen();
       setIsFullscreen(false);
+    }
+  };
+
+  const toggleLock = () => {
+    const nextLocked = !isLocked;
+    setIsLocked(nextLocked);
+    triggerHud(nextLocked ? "🔒" : "🔓", nextLocked ? "Controls Locked" : "Controls Unlocked");
+    if (nextLocked) {
+      setShowControls(false);
+    } else {
+      setShowControls(true);
+    }
+  };
+
+  const triggerLockPrompt = () => {
+    setShowLockPrompt(true);
+    if (lockPromptTimeoutRef.current) clearTimeout(lockPromptTimeoutRef.current);
+    lockPromptTimeoutRef.current = setTimeout(() => {
+      setShowLockPrompt(false);
+    }, 2000);
+  };
+
+  // Picture in Picture
+  const togglePiP = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+        setIsPiPActive(false);
+      } else {
+        await video.requestPictureInPicture();
+        setIsPiPActive(true);
+      }
+    } catch (e) {
+      console.error(e);
+      triggerHud("📺", "PiP Unsupported");
     }
   };
 
@@ -975,13 +1116,6 @@ function CustomPlayer({
     return () => document.removeEventListener("fullscreenchange", handleFSChange);
   }, []);
 
-  const formatTime = (time: number) => {
-    if (isNaN(time)) return "00:00";
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  };
-
   const handleVideoEnded = () => {
     setIsPlaying(false);
     if (autoNext && onEnded) {
@@ -989,106 +1123,17 @@ function CustomPlayer({
     }
   };
 
-  // Keyboard shortcuts event listener
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if focus is in search box or inputs
-      const activeEl = document.activeElement;
-      if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA" || activeEl.getAttribute("contenteditable") === "true")) {
-        return;
-      }
-
-      const video = videoRef.current;
-      if (!video) return;
-
-      switch (e.key.toLowerCase()) {
-        case " ":
-          e.preventDefault();
-          handlePlayPause();
-          break;
-        case "arrowleft":
-          e.preventDefault();
-          video.currentTime = Math.max(0, video.currentTime - 5);
-          setDoubleTapLeft(true);
-          setTimeout(() => setDoubleTapLeft(false), 500);
-          break;
-        case "arrowright":
-          e.preventDefault();
-          video.currentTime = Math.min(video.duration || 99999, video.currentTime + 5);
-          setDoubleTapRight(true);
-          setTimeout(() => setDoubleTapRight(false), 500);
-          break;
-        case "arrowup":
-          e.preventDefault();
-          const incVol = Math.min(1.0, video.volume + 0.1);
-          video.volume = incVol;
-          setVolume(incVol);
-          setIsMuted(incVol === 0);
-          setShowVolumeIndicator(true);
-          if (volumeIndicatorTimeoutRef.current) clearTimeout(volumeIndicatorTimeoutRef.current);
-          volumeIndicatorTimeoutRef.current = setTimeout(() => setShowVolumeIndicator(false), 800);
-          break;
-        case "arrowdown":
-          e.preventDefault();
-          const decVol = Math.max(0.0, video.volume - 0.1);
-          video.volume = decVol;
-          setVolume(decVol);
-          setIsMuted(decVol === 0);
-          setShowVolumeIndicator(true);
-          if (volumeIndicatorTimeoutRef.current) clearTimeout(volumeIndicatorTimeoutRef.current);
-          volumeIndicatorTimeoutRef.current = setTimeout(() => setShowVolumeIndicator(false), 800);
-          break;
-        case "f":
-          e.preventDefault();
-          toggleFullscreen();
-          break;
-        case "m":
-          e.preventDefault();
-          toggleMute();
-          break;
-        case "c":
-          e.preventDefault();
-          if (activeSubtitle) {
-            onSubtitleChange("");
-          } else if (captions && captions.length > 0) {
-            onSubtitleChange(captions[0].url);
-          }
-          break;
-        case "s":
-          e.preventDefault();
-          // Cycle speed: 0.5 -> 1.0 -> 1.25 -> 1.5 -> 2.0 -> 0.5
-          const speeds = [0.5, 1.0, 1.25, 1.5, 2.0];
-          const curIndex = speeds.indexOf(playbackSpeed);
-          const nextSpeed = speeds[(curIndex + 1) % speeds.length];
-          if (onSpeedChange) {
-            onSpeedChange(nextSpeed);
-          }
-          setSpeedIndicatorVal(nextSpeed);
-          setShowSpeedIndicator(true);
-          if (speedIndicatorTimeoutRef.current) clearTimeout(speedIndicatorTimeoutRef.current);
-          speedIndicatorTimeoutRef.current = setTimeout(() => setShowSpeedIndicator(false), 800);
-          break;
-        case "escape":
-          if (document.fullscreenElement) {
-            e.preventDefault();
-            document.exitFullscreen();
-          }
-          break;
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isPlaying, volume, isMuted, isFullscreen, activeSubtitle, captions, playbackSpeed, onSpeedChange]);
-
   // Click handler wrapper supporting single tap controls and double tap seeks
   const handlePlayerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isLocked) {
+      triggerLockPrompt();
+      return;
+    }
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const isLeft = x < rect.width / 2;
 
     if (e.detail === 2) {
-      // Double tap detected! Clear single tap timer.
       if (clickTimeoutRef.current) {
         clearTimeout(clickTimeoutRef.current);
         clickTimeoutRef.current = null;
@@ -1101,13 +1146,14 @@ function CustomPlayer({
         video.currentTime = Math.max(0, video.currentTime - 5);
         setDoubleTapLeft(true);
         setTimeout(() => setDoubleTapLeft(false), 500);
+        triggerHud("⏪", "-5 Seconds");
       } else {
         video.currentTime = Math.min(video.duration || 99999, video.currentTime + 5);
         setDoubleTapRight(true);
         setTimeout(() => setDoubleTapRight(false), 500);
+        triggerHud("⏩", "+5 Seconds");
       }
     } else {
-      // Single tap timer
       if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = setTimeout(() => {
         setShowControls(prev => !prev);
@@ -1117,12 +1163,14 @@ function CustomPlayer({
 
   // Long press for temporary 2x speed controls
   const handleMouseDown = () => {
+    if (isLocked) return;
     if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current);
     longPressTimeoutRef.current = setTimeout(() => {
       const video = videoRef.current;
       if (video) {
         video.playbackRate = 2.0;
         setLongPressActive(true);
+        triggerHud("⚡", "2X Speed Holding");
       }
     }, 450);
   };
@@ -1138,11 +1186,13 @@ function CustomPlayer({
         video.playbackRate = playbackSpeed;
       }
       setLongPressActive(false);
+      triggerHud("⚡", `${playbackSpeed}x Speed`);
     }
   };
 
   // Fullscreen touch swipe handler (brightness, volume, and scrub)
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (isLocked) return;
     if (e.touches.length !== 1) return;
     const touch = e.touches[0];
     const rect = e.currentTarget.getBoundingClientRect();
@@ -1152,11 +1202,9 @@ function CustomPlayer({
     touchStartRef.current = { x, y, time: Date.now(), scrubTime: currentTime };
 
     if (!isFullscreen) {
-      // Swipe gestures (scrubbing only if not in fullscreen)
       touchTypeRef.current = "scrub";
       initialValRef.current = currentTime;
     } else {
-      // Left side brightness, right side volume if in fullscreen
       if (x < rect.width / 2) {
         touchTypeRef.current = "brightness";
         initialValRef.current = brightness;
@@ -1168,7 +1216,7 @@ function CustomPlayer({
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!touchStartRef.current || !touchTypeRef.current) return;
+    if (isLocked || !touchStartRef.current || !touchTypeRef.current) return;
     const touch = e.touches[0];
     const rect = e.currentTarget.getBoundingClientRect();
     const x = touch.clientX - rect.left;
@@ -1177,7 +1225,6 @@ function CustomPlayer({
     const deltaX = x - touchStartRef.current.x;
     const deltaY = touchStartRef.current.y - y;
 
-    // Detect if swipe is horizontal scrub
     if (touchTypeRef.current === "scrub" || (!isFullscreen && Math.abs(deltaX) > Math.abs(deltaY) * 1.5)) {
       touchTypeRef.current = "scrub";
       const scrubRatio = deltaX / rect.width;
@@ -1190,7 +1237,6 @@ function CustomPlayer({
 
     if (!isFullscreen) return;
 
-    // Vertical movements in fullscreen
     const percentChange = deltaY / rect.height;
     if (touchTypeRef.current === "brightness") {
       const newVal = Math.min(1.0, Math.max(0.1, initialValRef.current + percentChange));
@@ -1210,11 +1256,7 @@ function CustomPlayer({
 
   const handleTouchEnd = () => {
     if (touchTypeRef.current === "scrub" && scrubPreviewTime !== null) {
-      const video = videoRef.current;
-      if (video) {
-        video.currentTime = scrubPreviewTime;
-        setCurrentTime(scrubPreviewTime);
-      }
+      handleSeekChange(scrubPreviewTime);
       setScrubPreviewTime(null);
       setShowScrubIndicator(false);
     }
@@ -1229,6 +1271,7 @@ function CustomPlayer({
 
   // Mouse wheel volume controls
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (isLocked) return;
     const video = videoRef.current;
     if (!video) return;
 
@@ -1238,19 +1281,43 @@ function CustomPlayer({
     video.volume = newVolume;
     setVolume(newVolume);
     setIsMuted(newVolume === 0);
-    setShowVolumeIndicator(true);
+    triggerHud("🔊", `${Math.round(newVolume * 100)}%`);
+  };
 
-    if (volumeIndicatorTimeoutRef.current) clearTimeout(volumeIndicatorTimeoutRef.current);
-    volumeIndicatorTimeoutRef.current = setTimeout(() => {
-      setShowVolumeIndicator(false);
-    }, 800);
+  // Handle aspect ratio toggle
+  const handlePinchGesture = () => {
+    if (isLocked) return;
+    const modes: ("contain" | "cover" | "fill")[] = ["contain", "cover", "fill"];
+    const curIndex = modes.indexOf(fitMode);
+    const nextMode = modes[(curIndex + 1) % modes.length];
+    setFitMode(nextMode);
+    triggerHud("📺", `Fit: ${nextMode.toUpperCase()}`);
+  };
+
+  // Progress Bar Scroller Hover details
+  const handleProgressBarMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const hoverX = e.clientX - rect.left;
+    const hoverRatio = Math.min(1, Math.max(0, hoverX / rect.width));
+    const hoverTimeVal = hoverRatio * duration;
+    setHoverTime(hoverTimeVal);
+    setHoverXPercent(hoverRatio * 100);
+    setShowHoverTime(true);
+
+    const activeChapter = chaptersList.find(c => hoverTimeVal >= c.start && hoverTimeVal < c.end);
+    setHoverChapterName(activeChapter ? activeChapter.name : "");
+  };
+
+  const handleProgressBarMouseLeave = () => {
+    setShowHoverTime(false);
   };
 
   return (
     <div 
-      className="relative w-full h-full group/player overflow-hidden flex items-center justify-center bg-black select-none"
+      ref={containerRef}
+      className="relative w-full h-full group/player overflow-hidden flex items-center justify-center bg-black select-none rounded-[16px] border border-white/5 shadow-2xl"
       onMouseMove={() => {
-        setShowControls(true);
+        if (!isLocked) setShowControls(true);
       }}
       onClick={handlePlayerClick}
       onMouseDown={handleMouseDown}
@@ -1270,29 +1337,56 @@ function CustomPlayer({
       }}
       onWheel={handleWheel}
     >
+      {/* Background Poster (Fades on play) */}
+      {!isVideoLoaded && posterUrl && (
+        <div className="absolute inset-0 bg-cover bg-center z-15 transition-opacity duration-700 ease-out" style={{ backgroundImage: `url(${posterUrl})` }}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-xl flex flex-col items-center justify-center gap-4">
+            <Loader2 className="w-10 h-10 text-[#E50914] animate-spin" />
+            <span className="text-xs text-gray-300 font-extrabold uppercase tracking-widest animate-pulse">Initializing Stream...</span>
+          </div>
+        </div>
+      )}
+
       {/* Simulated Brightness Dark Overlay */}
       <div 
         className="absolute inset-0 bg-black pointer-events-none transition-opacity duration-150 z-20"
         style={{ opacity: 1 - brightness }}
       />
 
+      {/* Touch Lock Overlay prompt */}
+      {showLockPrompt && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/85 backdrop-blur-md border border-white/10 rounded-2xl px-6 py-4 flex flex-col items-center gap-2 shadow-2xl z-40 pointer-events-none animate-pulse">
+          <Lock className="w-8 h-8 text-[#E50914]" />
+          <span className="text-white text-xs font-bold">🔒 Controls Locked</span>
+          <span className="text-[9px] text-gray-400">Tap lock icon to unlock</span>
+        </div>
+      )}
+
+      {/* Floating HUD Feedback Indicator Overlay */}
+      {showHud && hudText && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-black/75 backdrop-blur-md text-white text-[10px] font-bold px-3.5 py-2 rounded-full shadow-2xl border border-white/10 tracking-widest uppercase z-30 pointer-events-none flex items-center gap-1.5 animate-bounce">
+          <span>{hudIcon}</span>
+          <span>{hudText}</span>
+        </div>
+      )}
+
       {/* Double Tap Seek Feedback Circles */}
       {doubleTapLeft && (
-        <div className="animate-ping-once-left pointer-events-none z-30 flex flex-col items-center justify-center bg-black/60 backdrop-blur-md rounded-full w-20 h-20 text-white border border-white/15">
-          <span className="text-xl">⏮</span>
-          <span className="text-[10px] font-extrabold font-mono mt-1">-5s</span>
+        <div className="animate-ping-once-left pointer-events-none z-30 flex flex-col items-center justify-center bg-black/60 backdrop-blur-md rounded-full w-24 h-24 text-white border border-white/15">
+          <span className="text-2xl animate-bounce">⏪</span>
+          <span className="text-[11px] font-extrabold font-mono mt-1">-5 Seconds</span>
         </div>
       )}
       {doubleTapRight && (
-        <div className="animate-ping-once-right pointer-events-none z-30 flex flex-col items-center justify-center bg-black/60 backdrop-blur-md rounded-full w-20 h-20 text-white border border-white/15">
-          <span className="text-xl">⏭</span>
-          <span className="text-[10px] font-extrabold font-mono mt-1">+5s</span>
+        <div className="animate-ping-once-right pointer-events-none z-30 flex flex-col items-center justify-center bg-black/60 backdrop-blur-md rounded-full w-24 h-24 text-white border border-white/15">
+          <span className="text-2xl animate-bounce">⏩</span>
+          <span className="text-[11px] font-extrabold font-mono mt-1">+5 Seconds</span>
         </div>
       )}
 
       {/* Pulsing 2x Playback Speed Indicator Badge */}
       {longPressActive && (
-        <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-[#E50914] text-white text-[9px] font-extrabold px-3 py-1.5 rounded-full shadow-lg border border-[#E50914]/25 tracking-widest uppercase z-30">
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-[#E50914] text-white text-[9px] font-extrabold px-3 py-1.5 rounded-full shadow-lg border border-[#E50914]/25 tracking-widest uppercase z-30 animate-pulse">
           ⚡ 2X SPEED HOLDING
         </div>
       )}
@@ -1343,13 +1437,53 @@ function CustomPlayer({
         </div>
       )}
 
-      {/* Auto Play Up Next Countdown Box Overlay (final 20 seconds) */}
+      {/* Mobile Fit/Pinch Ratio Button */}
+      {showControls && !isLocked && (
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            handlePinchGesture();
+          }}
+          className="absolute top-6 left-6 w-11 h-11 bg-black/50 border border-white/5 hover:bg-black/70 hover:border-white/10 backdrop-blur-md rounded-xl flex items-center justify-center text-white transition-all z-30 cursor-pointer shadow-lg"
+          title="Toggle Aspect Ratio Ratio"
+        >
+          <Sparkles size={16} />
+        </button>
+      )}
+
+      {/* Mobile Touch Lock Button */}
+      {showControls && (
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleLock();
+          }}
+          className="absolute top-6 right-6 w-11 h-11 bg-black/50 border border-white/5 hover:bg-black/70 hover:border-white/10 backdrop-blur-md rounded-xl flex items-center justify-center text-white transition-all z-30 cursor-pointer shadow-lg"
+          title={isLocked ? "Unlock Screen" : "Lock Screen"}
+        >
+          {isLocked ? <Lock size={16} className="text-[#E50914]" /> : <Unlock size={16} />}
+        </button>
+      )}
+
+      {/* Next Episode Netflix-style Countdown Overlay Card (final 20 seconds) */}
       {showNextCountdown && (
-        <div className="absolute bottom-16 right-6 bg-black/85 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex flex-col gap-3 shadow-2xl z-30 w-64 animate-slide-right">
-          <span className="text-[9px] text-[#E50914] font-extrabold tracking-widest uppercase block border-b border-white/5 pb-1">Up Next</span>
-          <div className="flex justify-between items-center">
-            <span className="text-white text-xs font-bold truncate max-w-[140px]">Episode {episode + 1}</span>
-            <span className="text-[10px] text-gray-400 font-mono font-bold">in {countdownSeconds}s</span>
+        <div className="absolute bottom-20 right-6 bg-black/90 backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex flex-col gap-3.5 shadow-2xl z-30 w-72 animate-slide-right">
+          <div className="border-b border-white/5 pb-2 flex justify-between items-center">
+            <span className="text-[10px] text-[#E50914] font-extrabold tracking-widest uppercase">Up Next</span>
+            <span className="text-[10px] text-gray-500 font-mono font-bold">{countdownSeconds}s</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-14 h-14 bg-white/5 rounded-lg border border-white/10 overflow-hidden relative flex items-center justify-center">
+              {posterUrl ? (
+                <img src={posterUrl} className="w-full h-full object-cover" alt="Episode Poster" />
+              ) : (
+                <Tv className="w-6 h-6 text-gray-600" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-white text-xs font-bold truncate">Episode {episode + 1}</h4>
+              <p className="text-[10px] text-gray-400 truncate mt-0.5">Playing in {countdownSeconds} seconds</p>
+            </div>
           </div>
           <div className="flex gap-2 text-[10px] font-bold">
             <button 
@@ -1357,16 +1491,17 @@ function CustomPlayer({
                 setShowNextCountdown(false);
                 if (onEnded) onEnded();
               }}
-              className="flex-grow py-2 rounded-lg bg-[#E50914] text-white hover:bg-[#B91C1C] transition-colors"
+              className="flex-1 h-10 rounded-xl bg-[#E50914] text-white hover:bg-[#B91C1C] transition-colors flex items-center justify-center gap-1 cursor-pointer"
             >
-              Play Now
+              <Play size={10} className="fill-current" />
+              <span>Play Now</span>
             </button>
             <button 
               onClick={() => {
                 setShowNextCountdown(false);
                 setIgnoreCountdown(true);
               }}
-              className="flex-grow py-2 rounded-lg bg-white/10 text-white hover:bg-white/15 transition-colors"
+              className="flex-1 h-10 rounded-xl bg-white/5 text-white hover:bg-white/10 border border-white/5 transition-colors cursor-pointer"
             >
               Cancel
             </button>
@@ -1375,7 +1510,7 @@ function CustomPlayer({
       )}
 
       {/* Big Play Button Overlay in center when paused */}
-      {!isPlaying && (
+      {!isPlaying && !isLocked && isVideoLoaded && (
         <div 
           onClick={(e) => {
             e.stopPropagation();
@@ -1386,13 +1521,18 @@ function CustomPlayer({
           <Play size={26} className="fill-current ml-0.5" />
         </div>
       )}
+      
       <video
         ref={videoRef}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onDurationChange={handleLoadedMetadata}
         onEnded={handleVideoEnded}
-        className="w-full h-full object-contain cursor-pointer z-10"
+        onCanPlay={() => setIsVideoLoaded(true)}
+        className="w-full h-full object-contain z-10 transition-all duration-200"
+        style={{ 
+          objectFit: fitMode === "cover" ? "cover" : fitMode === "fill" ? "fill" : "contain"
+        }}
       >
         {activeSubtitle && (
           <track
@@ -1405,117 +1545,346 @@ function CustomPlayer({
         )}
       </video>
 
-      {/* Control Bar */}
+      {/* Control Bar - Netflix Glassmorphism Overlay */}
       <div 
         onClick={(e) => e.stopPropagation()} // Prevent click-through triggers
-        className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col gap-3 transition-opacity duration-300 z-30 ${
-          showControls ? "opacity-100" : "opacity-0"
+        className={`absolute bottom-0 left-0 right-0 p-4 transition-all duration-500 ease-out z-30 flex flex-col gap-3.5 ${
+          showControls && !isLocked ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
         }`}
+        style={{
+          background: "rgba(0,0,0,0.35)",
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+          borderTop: "1px solid rgba(255,255,255,0.08)"
+        }}
       >
-        <div className="flex items-center gap-3 w-full">
-          <span className="text-[10px] font-mono text-gray-300 font-bold">{formatTime(currentTime)}</span>
-          <input
-            type="range"
-            min="0"
-            max={duration || 100}
-            value={currentTime}
-            onChange={handleSeek}
-            className="flex-1 accent-[#E50914] h-1 bg-white/20 rounded-lg cursor-pointer hover:h-1.5 transition-all"
-          />
-          <span className="text-[10px] font-mono text-gray-300 font-bold">{formatTime(duration)}</span>
-        </div>
-
-        <div className="flex items-center justify-between w-full text-white">
-          <div className="flex items-center gap-4">
-            <button onClick={handlePlayPause} className="hover:text-[#E50914] transition-colors text-base font-bold">
-              {isPlaying ? "⏸" : "▶"}
-            </button>
-            <div className="flex items-center gap-2 group/volume">
-              <button onClick={toggleMute} className="hover:text-[#E50914] transition-colors text-base">
-                {isMuted ? "🔇" : "🔊"}
-              </button>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.1"
-                value={isMuted ? 0 : volume}
-                onChange={handleVolumeChange}
-                className="w-0 group-hover/volume:w-16 h-1 accent-[#E50914] bg-white/20 rounded-lg cursor-pointer transition-all duration-300 overflow-hidden"
-              />
+        
+        {/* Custom Progress Bar with hover thumb & chapters separation */}
+        <div className="flex flex-col gap-1 w-full group/progress relative">
+          
+          {/* Hover Time & Chapter Bubble Preview */}
+          {showHoverTime && (
+            <div 
+              className="absolute bottom-6 bg-black/90 backdrop-blur-md border border-white/10 rounded-xl px-2.5 py-1.5 flex flex-col items-center gap-0.5 shadow-2xl pointer-events-none z-40 transform -translate-x-1/2 text-[9px] font-bold"
+              style={{ left: `${hoverXPercent}%` }}
+            >
+              {hoverChapterName && <span className="text-[#E50914] uppercase tracking-wider block text-[7px]">{hoverChapterName}</span>}
+              <span className="text-white font-mono">{formatTime(hoverTime)}</span>
             </div>
+          )}
+
+          {/* Progress scroller track */}
+          <div 
+            className="h-1.5 group-hover/progress:h-2.5 bg-white/10 rounded-full cursor-pointer relative overflow-hidden transition-all flex items-center"
+            onMouseMove={handleProgressBarMouseMove}
+            onMouseLeave={handleProgressBarMouseLeave}
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const clickX = e.clientX - rect.left;
+              const ratio = clickX / rect.width;
+              handleSeekChange(ratio * duration);
+            }}
+          >
+            {/* Dynamic Buffer range sections */}
+            {bufferedRanges.map((r, i) => (
+              <div 
+                key={i}
+                className="absolute top-0 bottom-0 bg-white/20 pointer-events-none"
+                style={{ left: `${r.start}%`, width: `${r.end - r.start}%` }}
+              />
+            ))}
+
+            {/* Played timeline */}
+            <div 
+              className="absolute top-0 bottom-0 left-0 bg-[#E50914] pointer-events-none"
+              style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+            />
+
+            {/* Chapter Gap Markers */}
+            {chaptersList.map((ch, idx) => (
+              <div 
+                key={idx}
+                className="absolute top-0 bottom-0 bg-black/60 w-0.5 pointer-events-none"
+                style={{ left: `${(ch.start / (duration || 1)) * 100}%` }}
+              />
+            ))}
           </div>
 
-          <div className="flex items-center gap-4 text-xs font-semibold">
-            {/* Quality Selector */}
+          {/* Interactive thumb marker */}
+          <div 
+            className="absolute w-3.5 h-3.5 rounded-full bg-[#E50914] border border-white/20 pointer-events-none top-1/2 -translate-y-1/2 -ml-1.5 opacity-0 group-hover/progress:opacity-100 transition-opacity"
+            style={{ left: `${(currentTime / (duration || 1)) * 100}%` }}
+          />
+        </div>
+
+        {/* Action controls row */}
+        <div className="flex items-center justify-between w-full text-white">
+          <div className="flex items-center gap-2">
+            
+            {/* Play/Pause Button (touch size: 48px) */}
+            <button 
+              onClick={handlePlayPause} 
+              className="w-12 h-12 flex items-center justify-center hover:text-[#E50914] transition-colors cursor-pointer text-lg"
+              title="Play/Pause"
+            >
+              {isPlaying ? <Pause size={18} /> : <Play size={18} className="fill-current ml-0.5" />}
+            </button>
+
+            {/* Skip 5s Rewind */}
+            <button 
+              onClick={() => handleSeekChange(Math.max(0, currentTime - 5))}
+              className="w-11 h-11 flex items-center justify-center hover:text-[#E50914] transition-colors cursor-pointer text-gray-400"
+              title="Rewind 5s"
+            >
+              <RotateCcw size={16} />
+            </button>
+
+            {/* Skip 5s Forward */}
+            <button 
+              onClick={() => handleSeekChange(Math.min(duration, currentTime + 5))}
+              className="w-11 h-11 flex items-center justify-center hover:text-[#E50914] transition-colors cursor-pointer text-gray-400"
+              title="Forward 5s"
+            >
+              <RotateCw size={16} />
+            </button>
+
+            {/* Expanded hover Volume control */}
+            <div className="flex items-center group/volume ml-1.5">
+              <button 
+                onClick={toggleMute} 
+                className="w-12 h-12 flex items-center justify-center hover:text-[#E50914] transition-colors cursor-pointer"
+                title="Mute Toggle"
+              >
+                {isMuted ? <VolumeX size={18} /> : (volume > 0.5 ? <Volume2 size={18} /> : <Volume1 size={18} />)}
+              </button>
+              <div className="w-0 group-hover/volume:w-20 overflow-hidden transition-all duration-300 flex items-center">
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={isMuted ? 0 : volume}
+                  onChange={handleVolumeChange}
+                  className="w-16 accent-[#E50914] h-1 bg-white/20 rounded-lg cursor-pointer"
+                />
+              </div>
+            </div>
+
+            {/* Time display indicator formatted: current / duration */}
+            <span className="text-[10px] font-mono text-gray-400 font-bold ml-2">
+              {formatTime(currentTime)} <span className="mx-1 text-white/20">/</span> {formatTime(duration)}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            
+            {/* PiP Mini Player toggle */}
+            <button 
+              onClick={togglePiP}
+              className="w-12 h-12 flex items-center justify-center hover:text-[#E50914] transition-colors cursor-pointer text-gray-400"
+              title="Picture-in-Picture Mini Player"
+            >
+              <Tv size={16} />
+            </button>
+
+            {/* Settings Menu Button - Pop-up settings panel drawer */}
             <div className="relative">
               <button 
-                onClick={() => { setIsResolutionOpen(!isResolutionOpen); setIsSubtitleOpen(false); }}
-                className="px-2 py-1 bg-white/5 border border-white/10 rounded hover:bg-white/10 uppercase tracking-wide text-[10px]"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsSettingsOpen(!isSettingsOpen);
+                  setActiveMenu("main");
+                }}
+                className={`w-12 h-12 flex items-center justify-center transition-colors cursor-pointer ${
+                  isSettingsOpen ? "text-[#E50914]" : "text-gray-400 hover:text-white"
+                }`}
+                title="Playback Settings"
               >
-                ⚙ {activeResolution}
+                <Settings size={18} className={isSettingsOpen ? "rotate-45 transition-transform" : ""} />
               </button>
-              {isResolutionOpen && (
-                <div className="absolute bottom-8 right-0 bg-[#0A0A0F]/95 border border-white/10 rounded-lg py-1.5 w-32 flex flex-col gap-0.5 shadow-2xl z-50 text-[10px]">
-                  {resolutions.map((res: any, index: number) => (
-                    <button
-                      key={`${res.resolution}-${res.format || "MP4"}-${index}`}
-                      onClick={() => {
-                        onResolutionChange(res);
-                        setIsResolutionOpen(false);
-                      }}
-                      className={`px-3 py-1.5 text-left hover:bg-white/10 transition-colors whitespace-nowrap ${
-                        res.url === url ? "text-[#E50914] font-extrabold" : "text-gray-300"
-                      }`}
-                    >
-                      {res.resolution} ({res.format || "MP4"})
-                    </button>
-                  ))}
+
+              {/* Settings Menu Panel */}
+              {isSettingsOpen && (
+                <div className="absolute bottom-14 right-0 bg-[#0C0C0F]/95 backdrop-blur-xl border border-white/10 rounded-2xl py-2.5 w-60 shadow-2xl z-50 text-[10px] font-bold text-gray-300 animate-slide-right">
+                  
+                  {/* MAIN PANEL */}
+                  {activeMenu === "main" && (
+                    <div className="flex flex-col gap-0.5">
+                      <div className="px-3 pb-2 border-b border-white/5 flex items-center justify-between">
+                        <span className="text-[#E50914] font-extrabold uppercase tracking-widest text-[8px]">Playback Settings</span>
+                      </div>
+
+                      <button 
+                        onClick={() => setActiveMenu("quality")} 
+                        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-white/5 hover:text-white transition-colors"
+                      >
+                        <span className="flex items-center gap-2">⚙ Quality</span>
+                        <span className="text-gray-400 font-normal flex items-center gap-0.5">
+                          {activeResolution} <ChevronRight size={10} />
+                        </span>
+                      </button>
+
+                      <button 
+                        onClick={() => setActiveMenu("subtitle")} 
+                        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-white/5 hover:text-white transition-colors"
+                      >
+                        <span className="flex items-center gap-2">💬 Subtitles / CC</span>
+                        <span className="text-gray-400 font-normal flex items-center gap-0.5 max-w-[80px] truncate">
+                          {activeSubtitle ? (captions.find(c => c.url === activeSubtitle)?.language || "On") : "Off"} <ChevronRight size={10} />
+                        </span>
+                      </button>
+
+                      <button 
+                        onClick={() => setActiveMenu("speed")} 
+                        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-white/5 hover:text-white transition-colors"
+                      >
+                        <span className="flex items-center gap-2">⚡ Playback Speed</span>
+                        <span className="text-gray-400 font-normal flex items-center gap-0.5">
+                          {playbackSpeed}x <ChevronRight size={10} />
+                        </span>
+                      </button>
+
+                      <button 
+                        onClick={() => setActiveMenu("sleep")} 
+                        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-white/5 hover:text-white transition-colors"
+                      >
+                        <span className="flex items-center gap-2">⏰ Sleep Timer</span>
+                        <span className="text-gray-400 font-normal flex items-center gap-0.5">
+                          {sleepTimerMinutes ? `${sleepTimerMinutes}m` : "Off"} <ChevronRight size={10} />
+                        </span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* QUALITY SUB-MENU */}
+                  {activeMenu === "quality" && (
+                    <div className="flex flex-col gap-0.5">
+                      <div className="px-3 pb-2 border-b border-white/5 flex items-center gap-2">
+                        <button onClick={() => setActiveMenu("main")} className="hover:text-white text-gray-400 text-xs">←</button>
+                        <span className="text-white font-extrabold uppercase tracking-widest text-[8px]">Resolution Quality</span>
+                      </div>
+                      {resolutions.map((res: any, idx: number) => (
+                        <button
+                          key={`${res.resolution}-${idx}`}
+                          onClick={() => {
+                            onResolutionChange(res);
+                            setIsSettingsOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-white/5 text-left transition-colors ${
+                            res.url === url ? "text-[#E50914] font-extrabold" : "text-gray-300"
+                          }`}
+                        >
+                          <span>{res.resolution}</span>
+                          {res.url === url && <Check size={10} />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* SUBTITLE SUB-MENU */}
+                  {activeMenu === "subtitle" && (
+                    <div className="flex flex-col gap-0.5">
+                      <div className="px-3 pb-2 border-b border-white/5 flex items-center gap-2">
+                        <button onClick={() => setActiveMenu("main")} className="hover:text-white text-gray-400 text-xs">←</button>
+                        <span className="text-white font-extrabold uppercase tracking-widest text-[8px]">Subtitles / CC</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          onSubtitleChange("");
+                          setIsSettingsOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-white/5 text-left transition-colors ${
+                          !activeSubtitle ? "text-[#E50914] font-extrabold" : "text-gray-300"
+                        }`}
+                      >
+                        <span>Off</span>
+                        {!activeSubtitle && <Check size={10} />}
+                      </button>
+                      {captions.map((cap: any) => (
+                        <button
+                          key={cap.id}
+                          onClick={() => {
+                            onSubtitleChange(cap.url);
+                            setIsSettingsOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-white/5 text-left transition-colors ${
+                            cap.url === activeSubtitle ? "text-[#E50914] font-extrabold" : "text-gray-300"
+                          }`}
+                        >
+                          <span>{cap.language}</span>
+                          {cap.url === activeSubtitle && <Check size={10} />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* SPEED SUB-MENU */}
+                  {activeMenu === "speed" && (
+                    <div className="flex flex-col gap-0.5">
+                      <div className="px-3 pb-2 border-b border-white/5 flex items-center gap-2">
+                        <button onClick={() => setActiveMenu("main")} className="hover:text-white text-gray-400 text-xs">←</button>
+                        <span className="text-white font-extrabold uppercase tracking-widest text-[8px]">Playback Speed</span>
+                      </div>
+                      {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((spd) => (
+                        <button
+                          key={spd}
+                          onClick={() => {
+                            if (onSpeedChange) onSpeedChange(spd);
+                            setIsSettingsOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-white/5 text-left transition-colors ${
+                            playbackSpeed === spd ? "text-[#E50914] font-extrabold" : "text-gray-300"
+                          }`}
+                        >
+                          <span>{spd === 1.0 ? "Normal (1x)" : `${spd}x`}</span>
+                          {playbackSpeed === spd && <Check size={10} />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* SLEEP TIMER SUB-MENU */}
+                  {activeMenu === "sleep" && (
+                    <div className="flex flex-col gap-0.5">
+                      <div className="px-3 pb-2 border-b border-white/5 flex items-center gap-2">
+                        <button onClick={() => setActiveMenu("main")} className="hover:text-white text-gray-400 text-xs">←</button>
+                        <span className="text-[#E50914] font-extrabold uppercase tracking-widest text-[8px]">Sleep Timer</span>
+                      </div>
+                      {[
+                        { label: "Off", min: null },
+                        { label: "10 Minutes", min: 10 },
+                        { label: "20 Minutes", min: 20 },
+                        { label: "30 Minutes", min: 30 },
+                        { label: "60 Minutes", min: 60 }
+                      ].map((timer, i) => (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            setSleepTimerMinutes(timer.min);
+                            setIsSettingsOpen(false);
+                            if (timer.min) triggerHud("⏰", `Sleep Timer Set: ${timer.min}m`);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-white/5 text-left transition-colors ${
+                            sleepTimerMinutes === timer.min ? "text-[#E50914] font-extrabold" : "text-gray-300"
+                          }`}
+                        >
+                          <span>{timer.label}</span>
+                          {sleepTimerMinutes === timer.min && <Check size={10} />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* Subtitle Selector */}
-            <div className="relative">
-              <button 
-                onClick={() => { setIsSubtitleOpen(!isSubtitleOpen); setIsResolutionOpen(false); }}
-                className="px-2 py-1 bg-white/5 border border-white/10 rounded hover:bg-white/10 uppercase tracking-wide text-[10px]"
-              >
-                💬 CC
-              </button>
-              {isSubtitleOpen && (
-                <div className="absolute bottom-8 right-0 bg-[#0A0A0F]/95 border border-white/10 rounded-lg py-1.5 w-32 max-h-36 overflow-y-auto flex flex-col gap-0.5 shadow-2xl z-50 text-[10px]">
-                  <button
-                    onClick={() => {
-                      onSubtitleChange("");
-                      setIsSubtitleOpen(false);
-                    }}
-                    className={`px-3 py-1.5 text-left hover:bg-white/10 transition-colors ${
-                      !activeSubtitle ? "text-[#E50914] font-extrabold" : "text-gray-300"
-                    }`}
-                  >
-                    Off
-                  </button>
-                  {captions.map((cap: any) => (
-                    <button
-                      key={cap.id}
-                      onClick={() => {
-                        onSubtitleChange(cap.url);
-                        setIsSubtitleOpen(false);
-                      }}
-                      className={`px-3 py-1.5 text-left hover:bg-white/10 transition-colors ${
-                        cap.url === activeSubtitle ? "text-[#E50914] font-extrabold" : "text-gray-300"
-                      }`}
-                    >
-                      {cap.language}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <button onClick={toggleFullscreen} className="hover:text-[#E50914] transition-colors text-sm">
-              🗖
+            {/* Fullscreen Button */}
+            <button 
+              onClick={toggleFullscreen} 
+              className="w-12 h-12 flex items-center justify-center hover:text-[#E50914] transition-colors cursor-pointer text-gray-400"
+              title="Toggle Fullscreen"
+            >
+              <Maximize2 size={16} />
             </button>
           </div>
         </div>
