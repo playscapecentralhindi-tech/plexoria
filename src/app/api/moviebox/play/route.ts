@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Plexoria API version: 1.0.4 - Cache disabled, scored matching
 export const dynamic = "force-dynamic";
 
 const API_BASE = "https://h5-api.aoneroom.com/wefeed-h5api-bff";
