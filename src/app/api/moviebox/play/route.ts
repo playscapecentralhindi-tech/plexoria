@@ -248,8 +248,7 @@ export async function GET(req: NextRequest) {
     if (searchItems.length > 0) {
       const hasDefault = searchItems.some((item: any) => {
         const itemTitle = (item.title || "").toLowerCase();
-        return itemTitle.includes(title.toLowerCase()) && 
-               !itemTitle.includes("hindi") && 
+        return !itemTitle.includes("hindi") && 
                !itemTitle.includes("tamil") && 
                !itemTitle.includes("telugu");
       }) || searchItems.length > 0;
@@ -260,7 +259,7 @@ export async function GET(req: NextRequest) {
 
       const hasHindi = searchItems.some((item: any) => {
         const itemTitle = (item.title || "").toLowerCase();
-        return itemTitle.includes("hindi") && itemTitle.includes(title.toLowerCase());
+        return itemTitle.includes("hindi");
       });
       if (hasHindi) {
         availableDubs.push({ id: 200, name: "Plexoria Server (Hindi Dubbed)", dub: "hindi" });
@@ -268,7 +267,7 @@ export async function GET(req: NextRequest) {
 
       const hasTamil = searchItems.some((item: any) => {
         const itemTitle = (item.title || "").toLowerCase();
-        return itemTitle.includes("tamil") && itemTitle.includes(title.toLowerCase());
+        return itemTitle.includes("tamil");
       });
       if (hasTamil) {
         availableDubs.push({ id: 300, name: "Plexoria Server (Tamil Dubbed)", dub: "tamil" });
@@ -276,7 +275,7 @@ export async function GET(req: NextRequest) {
 
       const hasTelugu = searchItems.some((item: any) => {
         const itemTitle = (item.title || "").toLowerCase();
-        return itemTitle.includes("telugu") && itemTitle.includes(title.toLowerCase());
+        return itemTitle.includes("telugu");
       });
       if (hasTelugu) {
         availableDubs.push({ id: 400, name: "Plexoria Server (Telugu Dubbed)", dub: "telugu" });
