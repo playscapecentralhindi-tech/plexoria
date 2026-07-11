@@ -15,23 +15,36 @@ const DEFAULT_HEADERS = {
   "Content-Type": "application/json",
 };
 
-let cachedToken: string | null = null;
-let tokenExpiry = 0;
+interface TokenData {
+  token: string;
+  expiry: number;
+}
+const tokenCache = new Map<string, TokenData>();
 
 const playCache = new Map<string, { data: any; expiry: number }>();
 const PLAY_CACHE_TTL = 30 * 60 * 1000; // 30 minutes cache TTL
 
-// Fetch and cache the guest bearer token
-async function getBearerToken(): Promise<string> {
+// Fetch and cache the guest bearer token by client IP (geographic region)
+async function getBearerToken(clientIp?: string | null): Promise<string> {
   const now = Date.now();
-  if (cachedToken && now < tokenExpiry) {
-    return cachedToken;
+  const cacheKey = clientIp || "default";
+  const cached = tokenCache.get(cacheKey);
+  if (cached && now < cached.expiry) {
+    return cached.token;
   }
 
   try {
+    const headers: Record<string, string> = {
+      ...DEFAULT_HEADERS,
+    };
+    if (clientIp) {
+      headers["X-Forwarded-For"] = clientIp;
+      headers["X-Real-IP"] = clientIp;
+    }
+
     const res = await fetch(`${API_BASE}/home?host=moviebox.ph`, {
       method: "GET",
-      headers: DEFAULT_HEADERS,
+      headers,
     });
 
     const xUser = res.headers.get("x-user");
@@ -55,8 +68,7 @@ async function getBearerToken(): Promise<string> {
     }
 
     if (token) {
-      cachedToken = token;
-      tokenExpiry = now + 15 * 60 * 1000; // Cache for 15 minutes
+      tokenCache.set(cacheKey, { token, expiry: now + 15 * 60 * 1000 }); // Cache for 15 minutes
       return token;
     }
   } catch (error) {
@@ -66,14 +78,20 @@ async function getBearerToken(): Promise<string> {
   return "";
 }
 
-// Make an authenticated get request
-async function makeGetRequest(url: string, token: string) {
+// Make an authenticated get request with client IP forwarding
+async function makeGetRequest(url: string, token: string, clientIp?: string | null) {
+  const headers: Record<string, string> = {
+    ...DEFAULT_HEADERS,
+    "Authorization": `Bearer ${token}`,
+  };
+  if (clientIp) {
+    headers["X-Forwarded-For"] = clientIp;
+    headers["X-Real-IP"] = clientIp;
+  }
+
   const res = await fetch(url, {
     method: "GET",
-    headers: {
-      ...DEFAULT_HEADERS,
-      "Authorization": `Bearer ${token}`,
-    },
+    headers,
   });
 
   if (!res.ok) {
@@ -83,14 +101,20 @@ async function makeGetRequest(url: string, token: string) {
   return res.json();
 }
 
-// Make an authenticated post request
-async function makePostRequest(url: string, payload: any, token: string) {
+// Make an authenticated post request with client IP forwarding
+async function makePostRequest(url: string, payload: any, token: string, clientIp?: string | null) {
+  const headers: Record<string, string> = {
+    ...DEFAULT_HEADERS,
+    "Authorization": `Bearer ${token}`,
+  };
+  if (clientIp) {
+    headers["X-Forwarded-For"] = clientIp;
+    headers["X-Real-IP"] = clientIp;
+  }
+
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      ...DEFAULT_HEADERS,
-      "Authorization": `Bearer ${token}`,
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 
@@ -158,7 +182,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing title parameter" }, { status: 400 });
   }
 
-  const cacheKey = `${mediaType}:${title}:s${season}:e${episode}:d${dub || ""}`;
+  // Parse client IP for geo-bypassing
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.ip || "103.197.204.1";
+
+  const cacheKey = `${mediaType}:${title}:s${season}:e${episode}:d${dub || ""}:${clientIp}`;
   const cached = playCache.get(cacheKey);
   const now = Date.now();
   if (cached && cached.expiry > now) {
@@ -173,7 +200,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const token = await getBearerToken();
+    const token = await getBearerToken(clientIp);
     if (!token) {
       return NextResponse.json({ error: "Failed to authenticate with provider backend" }, { status: 502 });
     }
@@ -204,7 +231,7 @@ export async function GET(req: NextRequest) {
           keyword,
           page: 1,
           perPage: 20
-        }, token);
+        }, token, clientIp);
 
         const items = searchRes?.data?.items || searchRes?.data?.list || [];
         if (items.length > 0) {
@@ -305,7 +332,7 @@ export async function GET(req: NextRequest) {
     let actualSeason = season;
     if (mediaType === "tv") {
       try {
-        const detailData = await makeGetRequest(`${API_BASE}/detail?detailPath=${detailPath}`, token);
+        const detailData = await makeGetRequest(`${API_BASE}/detail?detailPath=${detailPath}`, token, clientIp);
         const seasonsList = detailData?.data?.resource?.seasons || [];
         if (seasonsList.length > 0) {
           // Map user's 1-indexed relative season selector to the actual database season number
@@ -326,6 +353,7 @@ export async function GET(req: NextRequest) {
       headers: {
         ...DEFAULT_HEADERS,
         "Authorization": `Bearer ${token}`,
+        ...(clientIp ? { "X-Forwarded-For": clientIp, "X-Real-IP": clientIp } : {})
       }
     });
     const domData = await domRes.json();
@@ -344,7 +372,8 @@ export async function GET(req: NextRequest) {
       headers: {
         ...DEFAULT_HEADERS,
         "Referer": playerReferer,
-        "Authorization": `Bearer ${token}`
+        "Authorization": `Bearer ${token}`,
+        ...(clientIp ? { "X-Forwarded-For": clientIp, "X-Real-IP": clientIp } : {})
       }
     });
 
@@ -406,7 +435,8 @@ export async function GET(req: NextRequest) {
         const capRes = await fetch(captionUrl, {
           headers: {
             ...DEFAULT_HEADERS,
-            "Authorization": `Bearer ${token}`
+            "Authorization": `Bearer ${token}`,
+            ...(clientIp ? { "X-Forwarded-For": clientIp, "X-Real-IP": clientIp } : {})
           }
         });
         if (capRes.ok) {
