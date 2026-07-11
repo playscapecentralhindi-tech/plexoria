@@ -133,7 +133,7 @@ export default function VideoPlayer({
           ...(data.streams || []),
           ...(data.hls || []),
           ...(data.dash || [])
-        ].filter((s: any) => !s.vipLocked && s.url);
+        ].filter((s: any) => s.url);
 
         if (availableStreams.length === 0) {
           throw new Error("No free streaming sources available for this title");
@@ -830,19 +830,19 @@ function CustomPlayer({
                 ⚙ {activeResolution}
               </button>
               {isResolutionOpen && (
-                <div className="absolute bottom-8 right-0 bg-[#0A0A0F]/95 border border-white/10 rounded-lg py-1.5 w-24 flex flex-col gap-0.5 shadow-2xl z-50 text-[10px]">
-                  {resolutions.map((res: any) => (
+                <div className="absolute bottom-8 right-0 bg-[#0A0A0F]/95 border border-white/10 rounded-lg py-1.5 w-32 flex flex-col gap-0.5 shadow-2xl z-50 text-[10px]">
+                  {resolutions.map((res: any, index: number) => (
                     <button
-                      key={res.resolution}
+                      key={`${res.resolution}-${res.format || "MP4"}-${index}`}
                       onClick={() => {
                         onResolutionChange(res);
                         setIsResolutionOpen(false);
                       }}
-                      className={`px-3 py-1.5 text-left hover:bg-white/10 transition-colors ${
-                        res.resolution === activeResolution ? "text-[#E50914] font-extrabold" : "text-gray-300"
+                      className={`px-3 py-1.5 text-left hover:bg-white/10 transition-colors whitespace-nowrap ${
+                        res.url === url ? "text-[#E50914] font-extrabold" : "text-gray-300"
                       }`}
                     >
-                      {res.resolution}
+                      {res.resolution} ({res.format || "MP4"})
                     </button>
                   ))}
                 </div>

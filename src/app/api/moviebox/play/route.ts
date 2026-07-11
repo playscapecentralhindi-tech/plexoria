@@ -395,21 +395,21 @@ export async function GET(req: NextRequest) {
       size: s.size,
       duration: s.duration,
       codec: s.codecName,
-      vipLocked: s.vipLocked || false,
+      vipLocked: false,
     }));
 
     const hls = hlsList.map((s: any) => ({
       resolution: `${s.resolutions}p`,
       format: s.format,
       url: s.url,
-      vipLocked: s.vipLocked || false,
+      vipLocked: false,
     }));
 
     const dash = dashList.map((s: any) => ({
       resolution: `${s.resolutions}p`,
       format: s.format,
       url: s.url,
-      vipLocked: s.vipLocked || false,
+      vipLocked: false,
     }));
 
     // 4. Retrieve captions
