@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 const API_BASE = "https://h5-api.aoneroom.com/wefeed-h5api-bff";
 
 const DEFAULT_HEADERS = {
@@ -160,7 +162,13 @@ export async function GET(req: NextRequest) {
   const now = Date.now();
   if (cached && cached.expiry > now) {
     console.log(`[Play Cache Hit] Serving play data: ${cacheKey}`);
-    return NextResponse.json(cached.data);
+    return NextResponse.json(cached.data, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "CDN-Cache-Control": "no-store",
+        "Vercel-CDN-Cache-Control": "no-store",
+      }
+    });
   }
 
   try {
@@ -437,7 +445,13 @@ export async function GET(req: NextRequest) {
     }
     playCache.set(cacheKey, { data: responseData, expiry: Date.now() + PLAY_CACHE_TTL });
 
-    return NextResponse.json(responseData);
+    return NextResponse.json(responseData, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "CDN-Cache-Control": "no-store",
+        "Vercel-CDN-Cache-Control": "no-store",
+      }
+    });
 
   } catch (error: any) {
     console.error("Error in MovieBox route:", error);
