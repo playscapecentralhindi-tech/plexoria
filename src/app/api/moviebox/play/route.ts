@@ -285,19 +285,13 @@ export async function GET(req: NextRequest) {
     const querySe = isMovie ? 0 : actualSeason;
     const queryEp = isMovie ? 0 : episode;
 
-    const playerReferer = `${domain}/spa/videoPlayPage/movies/${detailPath}?id=${subjectId}&type=/movie/detail&detailSe=${querySe}&detailEp=${queryEp}&lang=en`;
-    const playUrl = `${domain}/wefeed-h5api-bff/subject/play?subjectId=${subjectId}&se=${querySe}&ep=${queryEp}&detailPath=${detailPath}`;
+    const playerReferer = `https://moviebox.ph/spa/videoPlayPage/movies/${detailPath}?id=${subjectId}&type=/movie/detail&detailSe=${querySe}&detailEp=${queryEp}&lang=en`;
+    const playUrl = `${API_BASE}/subject/play?subjectId=${subjectId}&se=${querySe}&ep=${queryEp}&detailPath=${detailPath}`;
 
-    console.log(`Querying netfilm play URL: ${playUrl}`);
+    console.log(`Querying h5-api play URL: ${playUrl}`);
     const playRes = await fetch(playUrl, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
-        "Accept": "application/json",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-        "X-Client-Info": '{"timezone":"Asia/Dhaka"}',
-        "X-Source": "",
+        ...DEFAULT_HEADERS,
         "Referer": playerReferer,
         "Authorization": `Bearer ${token}`
       }
