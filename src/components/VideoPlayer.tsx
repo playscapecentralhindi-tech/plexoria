@@ -73,6 +73,8 @@ export default function VideoPlayer({
 
   const isPhpDeploy = typeof window !== 'undefined' && 
     (window.location.hostname.includes('gr.tc') || window.location.hostname.includes('infinityfree'));
+  const isLocalhost = typeof window !== 'undefined' && 
+    (window.location.hostname === 'localhost' || window.location.hostname.includes('127.0.0.1'));
   
   // Playback settings
   const [autoPlay, setAutoPlay] = useState(true);
@@ -163,7 +165,9 @@ export default function VideoPlayer({
         const proxiedUrl = highest.url.startsWith("http")
           ? (isPhpDeploy
               ? `/api/moviebox/proxy-stream/index.php?url=${encodeURIComponent(highest.url)}`
-              : `/api/moviebox/proxy-stream?url=${encodeURIComponent(highest.url)}`)
+              : (isLocalhost
+                  ? `/api/moviebox/proxy-stream?url=${encodeURIComponent(highest.url)}`
+                  : highest.url))
           : highest.url;
         setCurrentStreamUrl(proxiedUrl);
         setActiveResolution(highest.resolution);
@@ -302,7 +306,9 @@ export default function VideoPlayer({
                   const proxied = resObj.url.startsWith("http")
                     ? (isPhpDeploy
                         ? `/api/moviebox/proxy-stream/index.php?url=${encodeURIComponent(resObj.url)}`
-                        : `/api/moviebox/proxy-stream?url=${encodeURIComponent(resObj.url)}`)
+                        : (isLocalhost
+                            ? `/api/moviebox/proxy-stream?url=${encodeURIComponent(resObj.url)}`
+                            : resObj.url))
                     : resObj.url;
                   setCurrentStreamUrl(proxied);
                   setActiveResolution(resObj.resolution);
