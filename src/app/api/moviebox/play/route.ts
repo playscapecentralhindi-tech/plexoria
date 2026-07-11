@@ -177,6 +177,7 @@ export async function GET(req: NextRequest) {
   const season = parseInt(searchParams.get("season") || "1", 10);
   const episode = parseInt(searchParams.get("episode") || "1", 10);
   const dub = searchParams.get("dub");
+  const imdbId = searchParams.get("imdbId");
 
   if (!title) {
     return NextResponse.json({ error: "Missing title parameter" }, { status: 400 });
@@ -185,7 +186,7 @@ export async function GET(req: NextRequest) {
   // Parse client IP for geo-bypassing
   const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.ip || "103.197.204.1";
 
-  const cacheKey = `${mediaType}:${title}:s${season}:e${episode}:d${dub || ""}:${clientIp}`;
+  const cacheKey = `${mediaType}:${title}:s${season}:e${episode}:d${dub || ""}:${imdbId || ""}:${clientIp}`;
   const cached = playCache.get(cacheKey);
   const now = Date.now();
   if (cached && cached.expiry > now) {
@@ -207,17 +208,24 @@ export async function GET(req: NextRequest) {
 
     // 1. Determine search keywords (Hindi, Tamil, Telugu vs default)
     const cleanedTitle = title.replace(/[:\-]/g, " ").replace(/\s+/g, " ").trim();
-    let keywordsToTry = [title];
-    if (cleanedTitle !== title) {
-      keywordsToTry.push(cleanedTitle);
+    let keywordsToTry = [];
+
+    // Prioritize search by IMDb ID if available to guarantee exact match
+    if (imdbId && imdbId.startsWith("tt")) {
+      keywordsToTry.push(imdbId);
     }
 
     if (dub === "hindi") {
-      keywordsToTry = [`${title} [Hindi]`, `${title} Hindi`, `${cleanedTitle} [Hindi]`, title];
+      keywordsToTry.push(`${title} [Hindi]`, `${title} Hindi`, `${cleanedTitle} [Hindi]`, title);
     } else if (dub === "tamil") {
-      keywordsToTry = [`${title} [Tamil]`, `${title} Tamil`, `${cleanedTitle} [Tamil]`, title];
+      keywordsToTry.push(`${title} [Tamil]`, `${title} Tamil`, `${cleanedTitle} [Tamil]`, title);
     } else if (dub === "telugu") {
-      keywordsToTry = [`${title} [Telugu]`, `${title} Telugu`, `${cleanedTitle} [Telugu]`, title];
+      keywordsToTry.push(`${title} [Telugu]`, `${title} Telugu`, `${cleanedTitle} [Telugu]`, title);
+    } else {
+      keywordsToTry.push(title);
+      if (cleanedTitle !== title) {
+        keywordsToTry.push(cleanedTitle);
+      }
     }
 
     let matchedItem: any = null;

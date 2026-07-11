@@ -128,8 +128,8 @@ export default function VideoPlayer({
         const dubParam = currentServer ? currentServer.dub : "";
         const res = await fetch(
           isPhpDeploy
-            ? `/api/moviebox/play/index.php?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&dub=${dubParam}&_t=${Date.now()}`
-            : `/api/moviebox/play?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&dub=${dubParam}&_t=${Date.now()}`
+            ? `/api/moviebox/play/index.php?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&dub=${dubParam}&imdbId=${encodeURIComponent(imdbId || "")}&_t=${Date.now()}`
+            : `/api/moviebox/play?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&dub=${dubParam}&imdbId=${encodeURIComponent(imdbId || "")}&_t=${Date.now()}`
         );
         if (!res.ok) {
           let errMsg = "Failed to load Plexoria stream index";
