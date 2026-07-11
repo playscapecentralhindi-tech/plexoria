@@ -273,14 +273,11 @@ export async function GET(req: NextRequest) {
             score: si.score
           })), null, 2));
 
-          // Pick the item with the highest score if score > 0, otherwise fallback to first search item
+          // Pick the item with the highest score if score > 0
           if (scoredItems.length > 0 && scoredItems[0].score > 0) {
             matchedItem = scoredItems[0].item;
-          } else {
-            matchedItem = itemsToMatch[0];
+            break; // Found matches, break loop
           }
-          
-          break; // Found matches, break loop
         }
       } catch (err) {
         console.error(`Search failed for keyword ${keyword}:`, err);
