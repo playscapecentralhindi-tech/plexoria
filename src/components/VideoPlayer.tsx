@@ -85,6 +85,23 @@ export default function VideoPlayer({
   const [isSubtitleOpen, setIsSubtitleOpen] = useState(false);
   const [isPlaybackMenuOpen, setIsPlaybackMenuOpen] = useState(false);
 
+  // Episode Search state
+  const [episodeSearchQuery, setEpisodeSearchQuery] = useState("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setIsSearchFocused(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   const [availableServers, setAvailableServers] = useState<ServerConfig[]>([
     { id: 0, name: "Plexoria Server (SUB / Multi-Language)", status: "active", dub: "" },
     { id: 200, name: "Plexoria Server (Hindi Dubbed)", status: "active", dub: "hindi" }
@@ -209,6 +226,43 @@ export default function VideoPlayer({
       onEpisodeChange(episode - 1);
     }
   };
+
+  // Generate list of Next Episodes, Search Matches, and Recently Watched
+  const nextEpisodes = episodesList
+    .filter((ep: any) => ep.episode_number > episode)
+    .slice(0, 3);
+
+  // Read recently watched episodes from local progress Map
+  const [recentEpisodes, setRecentEpisodes] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (mediaType === "tv") {
+      try {
+        const stored = localStorage.getItem("plexoria_watched_progress") || "{}";
+        const progressMap = JSON.parse(stored);
+        
+        // Find watched episodes for this tv show from the current season
+        const watched = episodesList.filter((ep: any) => {
+          const key = `${id}_${season}_${ep.episode_number}`;
+          // consider watched if it exists in progress map
+          return progressMap[key] !== undefined && ep.episode_number !== episode;
+        }).slice(0, 3);
+        setRecentEpisodes(watched);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, [episodesList, episode, mediaType, id, season, isSearchFocused]);
+
+  // Matches based on search query
+  const matchingEpisodes = episodeSearchQuery.trim()
+    ? episodesList.filter((ep: any) => {
+        const q = episodeSearchQuery.toLowerCase();
+        const epNumStr = ep.episode_number.toString();
+        const epName = (ep.name || "").toLowerCase();
+        return epNumStr === q || epNumStr.includes(q) || epName.includes(q);
+      })
+    : [];
 
   const selectedServer = availableServers.find(s => s.id === selectedServerId) || availableServers[0];
 
@@ -493,6 +547,115 @@ export default function VideoPlayer({
             )}
           </div>
         </div>
+
+        {/* Episode Search / Jump Widget (TV shows only) */}
+        {mediaType === "tv" && (
+          <div ref={searchContainerRef} className="relative flex-1 max-w-sm min-w-[200px] z-50">
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[11px] text-gray-500">
+                🔍
+              </span>
+              <input
+                type="text"
+                value={episodeSearchQuery}
+                onChange={(e) => setEpisodeSearchQuery(e.target.value)}
+                onFocus={() => {
+                  setIsSearchFocused(true);
+                  setIsServerOpen(false);
+                  setIsSubtitleOpen(false);
+                  setIsPlaybackMenuOpen(false);
+                }}
+                placeholder="Search or Jump to Episode... [e.g., '12' or 'final']"
+                className="w-full h-10 pl-9 pr-4 bg-[#1E1E1E] hover:bg-[#242424] focus:bg-[#242424] text-white font-semibold rounded-[12px] border border-white/5 focus:border-[#E50914]/50 focus:outline-none transition-all placeholder-gray-500 text-xs"
+              />
+            </div>
+
+            {isSearchFocused && (
+              <div className="absolute left-0 bottom-12 mb-1 w-full bg-[#171717]/95 backdrop-blur-md border border-white/10 rounded-[14px] p-2 flex flex-col gap-2 shadow-2xl max-h-72 overflow-y-auto z-50">
+                
+                {/* Search Active Matching Mode */}
+                {episodeSearchQuery.trim() ? (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="px-2 py-1 text-[9px] text-gray-500 font-extrabold uppercase tracking-wider">Matches</span>
+                    {matchingEpisodes.length > 0 ? (
+                      matchingEpisodes.map((ep: any) => (
+                        <button
+                          key={ep.id}
+                          onClick={() => {
+                            if (onEpisodeChange) onEpisodeChange(ep.episode_number);
+                            setEpisodeSearchQuery("");
+                            setIsSearchFocused(false);
+                          }}
+                          className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs font-semibold hover:bg-white/5 transition-colors ${
+                            ep.episode_number === episode ? "text-[#E50914]" : "text-gray-300"
+                          }`}
+                        >
+                          <span className="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center text-[10px] shrink-0 font-bold">
+                            {ep.episode_number}
+                          </span>
+                          <span className="truncate">{ep.name || `Episode ${ep.episode_number}`}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <span className="px-2.5 py-2 text-[10px] text-gray-500 italic">No matching episodes found</span>
+                    )}
+                  </div>
+                ) : (
+                  /* Default list when search is empty */
+                  <>
+                    {/* Next Episodes */}
+                    {nextEpisodes.length > 0 && (
+                      <div className="flex flex-col gap-0.5">
+                        <span className="px-2 py-1 text-[9px] text-gray-500 font-extrabold uppercase tracking-wider">Next Episodes</span>
+                        {nextEpisodes.map((ep: any) => (
+                          <button
+                            key={ep.id}
+                            onClick={() => {
+                              if (onEpisodeChange) onEpisodeChange(ep.episode_number);
+                              setIsSearchFocused(false);
+                            }}
+                            className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-left text-xs font-semibold text-gray-300 hover:bg-white/5 transition-colors group"
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <span className="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center text-[10px] shrink-0 text-gray-400 group-hover:text-white font-bold">
+                                {ep.episode_number}
+                              </span>
+                              <span className="truncate">{ep.name || `Episode ${ep.episode_number}`}</span>
+                            </div>
+                            <span className="text-gray-500 group-hover:text-white shrink-0 ml-2">›</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Recently Watched */}
+                    {recentEpisodes.length > 0 && (
+                      <div className="flex flex-col gap-0.5 border-t border-white/5 pt-1.5">
+                        <span className="px-2 py-1 text-[9px] text-gray-500 font-extrabold uppercase tracking-wider">Recently Watched</span>
+                        {recentEpisodes.map((ep: any) => (
+                          <button
+                            key={ep.id}
+                            onClick={() => {
+                              if (onEpisodeChange) onEpisodeChange(ep.episode_number);
+                              setIsSearchFocused(false);
+                            }}
+                            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs font-semibold text-gray-400 hover:bg-white/5 hover:text-white transition-colors"
+                          >
+                            <span className="text-[11px] shrink-0">🕒</span>
+                            <span className="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center text-[10px] shrink-0 font-bold">
+                              {ep.episode_number}
+                            </span>
+                            <span className="truncate">{ep.name || `Episode ${ep.episode_number}`}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Action Buttons on the right */}
         <div className="flex items-center gap-2">
