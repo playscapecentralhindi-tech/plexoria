@@ -222,9 +222,9 @@ export async function GET(req: NextRequest) {
           });
 
           // Sort descending by score
-          scoredItems.sort((a, b) => b.score - a.score);
+          scoredItems.sort((a: any, b: any) => b.score - a.score);
           
-          console.log("Scored search results:", JSON.stringify(scoredItems.map(si => ({
+          console.log("Scored search results:", JSON.stringify(scoredItems.map((si: any) => ({
             title: si.item.title,
             score: si.score
           })), null, 2));
