@@ -31,6 +31,45 @@ import {
 } from "lucide-react";
 import Hls from "hls.js";
 
+// Helper function to fetch and recursively parse VAST XML wrappers and media files
+async function parseVastXml(url: string, depth = 0): Promise<string | null> {
+  if (depth > 5) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const text = await res.text();
+    
+    // 1. Check for Wrapper redirect
+    const wrapperMatch = text.match(/<VASTAdTagURI>[\s\S]*?<!\[CDATA\[([\s\S]*?)\]\]>[\s\S]*?<\/VASTAdTagURI>/i) 
+      || text.match(/<VASTAdTagURI>([\s\S]*?)<\/VASTAdTagURI>/i);
+    if (wrapperMatch) {
+      const redirectUrl = wrapperMatch[1].trim();
+      return parseVastXml(redirectUrl, depth + 1);
+    }
+    
+    // 2. Check for progressive MP4 files in MediaFile tags
+    const mediaFiles = text.match(/<MediaFile[\s\S]*?type="video\/mp4"[\s\S]*?>[\s\S]*?<!\[CDATA\[([\s\S]*?)\]\]>[\s\S]*?<\/MediaFile>/gi)
+      || text.match(/<MediaFile[\s\S]*?>[\s\S]*?<!\[CDATA\[([\s\S]*?)\]\]>[\s\S]*?<\/MediaFile>/gi)
+      || text.match(/<MediaFile[\s\S]*?>([\s\S]*?)<\/MediaFile>/gi);
+      
+    if (mediaFiles) {
+      for (const mediaFile of mediaFiles) {
+        const urlMatch = mediaFile.match(/<!\[CDATA\[([\s\S]*?)\]\]>/i) 
+          || mediaFile.match(/<MediaFile[\s\S]*?>([\s\S]*?)<\/MediaFile>/i);
+        if (urlMatch) {
+          const cleanUrl = urlMatch[1].trim();
+          if (cleanUrl.startsWith("http")) {
+            return cleanUrl;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Vast parser error:", e);
+  }
+  return null;
+}
+
 interface VideoPlayerProps {
   mediaType: "movie" | "tv";
   id: string;
@@ -753,6 +792,14 @@ function CustomPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   
+  // Ad playback states
+  const [adVideoUrl, setAdVideoUrl] = useState<string | null>(null);
+  const [isAdPlaying, setIsAdPlaying] = useState(false);
+  const [adCountdown, setAdCountdown] = useState(5);
+  const [canSkipAd, setCanSkipAd] = useState(false);
+  const [adBypassed, setAdBypassed] = useState(false);
+  const adPlaybackTimeRef = useRef<number>(0);
+  
   // Settings menu states
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeMenu, setActiveMenu] = useState<"main" | "speed" | "quality" | "subtitle" | "sleep" | null>(null);
@@ -851,7 +898,7 @@ function CustomPlayer({
     }
   }, [playbackSpeed]);
 
-  // Load stream with HLS
+  // Load stream with HLS or VAST ads
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -859,44 +906,88 @@ function CustomPlayer({
     setIsPlaying(false);
     setIsVideoLoaded(false);
     let hls: Hls | null = null;
+    let isAdMounted = true;
 
-    if (url.includes(".m3u8")) {
-      if (Hls.isSupported()) {
-        hls = new Hls({
-          maxMaxBufferLength: 30,
-          enableWorker: true
-        });
-        hls.loadSource(url);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+    const startMainPlayback = () => {
+      if (!isAdMounted) return;
+      setIsAdPlaying(false);
+      setAdVideoUrl(null);
+
+      if (url.includes(".m3u8")) {
+        if (Hls.isSupported()) {
+          hls = new Hls({
+            maxMaxBufferLength: 30,
+            enableWorker: true
+          });
+          hls.loadSource(url);
+          hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            if (autoPlay) {
+              video.play().then(() => setIsPlaying(true)).catch(() => {});
+            }
+          });
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+          video.src = url;
           if (autoPlay) {
             video.play().then(() => setIsPlaying(true)).catch(() => {});
           }
-        });
-      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        }
+      } else {
         video.src = url;
         if (autoPlay) {
           video.play().then(() => setIsPlaying(true)).catch(() => {});
         }
       }
-    } else {
-      video.src = url;
-      if (autoPlay) {
-        video.play().then(() => setIsPlaying(true)).catch(() => {});
+    };
+
+    const startAdPlayback = (adUrl: string) => {
+      if (!isAdMounted) return;
+      setAdVideoUrl(adUrl);
+      setIsAdPlaying(true);
+      setCanSkipAd(false);
+      setAdCountdown(5);
+      adPlaybackTimeRef.current = 0;
+
+      video.src = adUrl;
+      video.load();
+      video.play().then(() => setIsPlaying(true)).catch(() => {});
+    };
+
+    const initializeMedia = async () => {
+      if (adBypassed) {
+        startMainPlayback();
+        return;
       }
-    }
+      
+      const vastTagUrl = "https://s.magsrv.com/v1/vast.php?idz=5972462&ex_av=name";
+      try {
+        const resolvedAdUrl = await parseVastXml(vastTagUrl);
+        if (resolvedAdUrl && isAdMounted) {
+          startAdPlayback(resolvedAdUrl);
+        } else {
+          startMainPlayback();
+        }
+      } catch (err) {
+        console.error("Ad block or vast fetch error, skipping:", err);
+        startMainPlayback();
+      }
+    };
+
+    initializeMedia();
 
     return () => {
+      isAdMounted = false;
       if (hls) {
         hls.destroy();
       }
     };
-  }, [url, autoPlay]);
+  }, [url, adBypassed, autoPlay]);
 
   useEffect(() => {
     hasRestoredProgressRef.current = false;
     setShowNextCountdown(false);
     setIgnoreCountdown(false);
+    setAdBypassed(false); // Reset ad bypass for new media
   }, [url]);
 
   // Sleep Timer Handler
@@ -928,6 +1019,15 @@ function CustomPlayer({
     if (!video) return;
     const cur = video.currentTime;
     setCurrentTime(cur);
+
+    if (isAdPlaying) {
+      const remaining = Math.max(0, 5 - Math.floor(cur));
+      setAdCountdown(remaining);
+      if (remaining <= 0) {
+        setCanSkipAd(true);
+      }
+      return;
+    }
 
     // Track buffering ranges
     const ranges = [];
@@ -1181,8 +1281,16 @@ function CustomPlayer({
     return () => document.removeEventListener("fullscreenchange", handleFSChange);
   }, []);
 
+  const skipAd = () => {
+    setAdBypassed(true);
+  };
+
   const handleVideoEnded = () => {
     setIsPlaying(false);
+    if (isAdPlaying) {
+      skipAd();
+      return;
+    }
     if (autoNext && onEnded) {
       onEnded();
     }
@@ -1626,11 +1734,43 @@ function CustomPlayer({
         )}
       </video>
 
+      {/* Ad Overlay Panel */}
+      {isAdPlaying && (
+        <div className="absolute inset-0 bg-black/40 z-35 flex flex-col justify-between p-6 pointer-events-none">
+          {/* Top banner */}
+          <div className="flex justify-between items-start">
+            <span className="bg-black/75 backdrop-blur-md text-white text-[9px] font-extrabold px-3 py-1.5 rounded border border-white/10 tracking-widest uppercase no-click-through">
+              Advertisement
+            </span>
+          </div>
+
+          {/* Bottom right skip ad button */}
+          <div className="flex justify-end items-end w-full">
+            {canSkipAd ? (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  skipAd();
+                }}
+                className="pointer-events-auto bg-[#E50914] text-white font-extrabold text-[10px] uppercase tracking-wider px-4 py-2.5 rounded-xl border border-[#E50914]/25 shadow-2xl cursor-pointer hover:bg-[#B91C1C] active:scale-95 transition-all flex items-center gap-1"
+              >
+                <span>Skip Ad</span>
+                <ArrowRight size={12} />
+              </button>
+            ) : (
+              <span className="bg-black/80 backdrop-blur-md text-white/70 font-bold text-[9px] uppercase tracking-wider px-3.5 py-2.5 rounded-xl border border-white/10 no-click-through">
+                Skip Ad in {adCountdown}s
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Control Bar - Netflix Glassmorphism Overlay */}
       <div 
         onClick={(e) => e.stopPropagation()} // Prevent click-through triggers
         className={`absolute bottom-0 left-0 right-0 p-4 transition-all duration-500 ease-out z-30 flex flex-col gap-3.5 ${
-          showControls && !isLocked ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+          showControls && !isLocked && !isAdPlaying ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
         }`}
         style={{
           background: "rgba(0,0,0,0.35)",
