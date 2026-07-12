@@ -22,7 +22,7 @@ interface TokenData {
 const tokenCache = new Map<string, TokenData>();
 
 const playCache = new Map<string, { data: any; expiry: number }>();
-const PLAY_CACHE_TTL = 30 * 60 * 1000; // 30 minutes cache TTL
+const PLAY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL to prevent URL expiration
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 5000): Promise<Response> {
   const controller = new AbortController();
@@ -357,8 +357,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "No matching titles found in streaming database" }, { status: 404 });
     }
 
-    const subjectId = matchedItem.subjectId;
-    const detailPath = matchedItem.detailPath;
+    let subjectId = matchedItem.subjectId || matchedItem.id;
+    let detailPath = matchedItem.detailPath || matchedItem.path;
     console.log(`Matched MovieBox title: ${matchedItem.title} (ID: ${subjectId}, Path: ${detailPath})`);
 
     // Dynamic Season Resolver: MovieBox might index seasons non-sequentially or as separate groups (e.g. S15-S16)
@@ -414,12 +414,71 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: `Netfilm player request failed with status ${playRes.status}` }, { status: 502 });
     }
 
-    const playData = await playRes.json();
-    const streamsData = playData?.data || {};
+    let playData = await playRes.json();
+    let streamsData = playData?.data || {};
 
-    const rawStreams = streamsData.streams || [];
-    const hlsList = streamsData.hls || [];
-    const dashList = streamsData.dash || [];
+    let rawStreams = streamsData.streams || [];
+    let hlsList = streamsData.hls || [];
+    let dashList = streamsData.dash || [];
+
+    // Fallback: If requested dub has no streams, try falling back to default/English version
+    if (rawStreams.length === 0 && hlsList.length === 0 && dub) {
+      console.log(`Requested dub "${dub}" has no active streams. Attempting fallback to default/English stream...`);
+      const defaultScoredItems = searchItems.map((item: any) => {
+        const itemTitle = item.title || "";
+        const score = getMatchScore(itemTitle, title, null);
+        return { item, score };
+      });
+      defaultScoredItems.sort((a: any, b: any) => b.score - a.score);
+
+      let defaultMatchedItem = null;
+      if (defaultScoredItems.length > 0 && defaultScoredItems[0].score > 0) {
+        defaultMatchedItem = defaultScoredItems[0].item;
+      } else if (searchItems.length > 0 && shareSignificantWord(searchItems[0].title || "", title)) {
+        defaultMatchedItem = searchItems[0];
+      }
+
+      if (defaultMatchedItem && (defaultMatchedItem.id || defaultMatchedItem.subjectId) !== subjectId) {
+        const fallbackSubjectId = defaultMatchedItem.id || defaultMatchedItem.subjectId;
+        const fallbackDetailPath = defaultMatchedItem.path || defaultMatchedItem.detailPath;
+        const fallbackPlayerReferer = `https://moviebox.ph/spa/videoPlayPage/movies/${fallbackDetailPath}?id=${fallbackSubjectId}&type=/movie/detail&detailSe=${querySe}&detailEp=${queryEp}&lang=en`;
+        const fallbackPlayUrl = `${API_BASE}/subject/play?subjectId=${fallbackSubjectId}&se=${querySe}&ep=${queryEp}&detailPath=${fallbackDetailPath}`;
+
+        console.log(`Querying fallback default play URL: ${fallbackPlayUrl}`);
+        try {
+          const fallbackPlayRes = await fetchWithTimeout(fallbackPlayUrl, {
+            headers: {
+              ...DEFAULT_HEADERS,
+              "Referer": fallbackPlayerReferer,
+              "Authorization": `Bearer ${token}`,
+              ...(clientIp ? { "X-Forwarded-For": clientIp, "X-Real-IP": clientIp } : {})
+            }
+          });
+          if (fallbackPlayRes.ok) {
+            const fallbackPlayData = await fallbackPlayRes.json();
+            const fallbackStreamsData = fallbackPlayData?.data || {};
+            const fallbackRawStreams = fallbackStreamsData.streams || [];
+            const fallbackHlsList = fallbackStreamsData.hls || [];
+
+            if (fallbackRawStreams.length > 0 || fallbackHlsList.length > 0) {
+              console.log(`Successfully resolved fallback default stream: ${defaultMatchedItem.title}`);
+              playData = fallbackPlayData;
+              streamsData = fallbackStreamsData;
+              rawStreams = fallbackRawStreams;
+              hlsList = fallbackHlsList;
+              dashList = fallbackStreamsData.dash || [];
+              
+              // Update subjectId and detailPath variables
+              subjectId = fallbackSubjectId;
+              detailPath = fallbackDetailPath;
+              matchedItem = defaultMatchedItem;
+            }
+          }
+        } catch (fallbackErr) {
+          console.error("Failed to fetch fallback default stream:", fallbackErr);
+        }
+      }
+    }
 
     const streams = rawStreams.map((s: any) => ({
       resolution: `${s.resolutions}p`,
