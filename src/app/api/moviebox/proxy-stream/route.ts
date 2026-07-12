@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "edge";
+// export const runtime = "edge";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
@@ -51,14 +51,71 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s connection setup timeout
+
     const response = await fetch(targetUrl, {
       headers,
       method: "GET",
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok && response.status !== 206) {
       console.error(`Proxy stream target returned status ${response.status}`);
       return new NextResponse(`Target returned ${response.status}`, { status: response.status });
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    const isHls = targetUrl.split("?")[0].endsWith(".m3u8") || 
+                  /mpegurl|m3u8/i.test(contentType);
+
+    if (isHls) {
+      const text = await response.text();
+      const lines = text.split("\n");
+      const baseUrl = new URL(targetUrl);
+      const rewrittenLines = lines.map(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return line;
+
+        if (trimmed.startsWith("#")) {
+          if (trimmed.startsWith("#EXT-X-KEY:") || trimmed.startsWith("#EXT-X-MAP:")) {
+            return line.replace(/URI="([^"]+)"/g, (match, uri) => {
+              const resolvedUrl = new URL(uri, baseUrl).toString();
+              const proxiedUrl = `/api/moviebox/proxy-stream?url=${encodeURIComponent(resolvedUrl)}`;
+              return `URI="${proxiedUrl}"`;
+            });
+          }
+          return line;
+        }
+
+        const resolvedUrl = new URL(trimmed, baseUrl).toString();
+        return `/api/moviebox/proxy-stream?url=${encodeURIComponent(resolvedUrl)}`;
+      });
+      const rewrittenText = rewrittenLines.join("\n");
+
+      const resHeaders = new Headers();
+      const copyHeaders = [
+        "content-type",
+        "cache-control",
+      ];
+
+      copyHeaders.forEach((h) => {
+        const val = response.headers.get(h);
+        if (val) {
+          resHeaders.set(h, val);
+        }
+      });
+
+      if (!resHeaders.has("content-type")) {
+        resHeaders.set("content-type", contentType || "application/x-mpegURL");
+      }
+
+      return new Response(rewrittenText, {
+        status: response.status,
+        headers: resHeaders,
+      });
     }
 
     const resHeaders = new Headers();
@@ -83,6 +140,9 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("Proxy stream error:", err);
-    return new NextResponse(`Proxy error: ${err.message}`, { status: 500 });
+    if (err.name === "AbortError") {
+      return new NextResponse("Gateway Timeout: Upstream server took too long to respond", { status: 504 });
+    }
+    return new NextResponse(`Bad Gateway: Proxy error: ${err.message}`, { status: 502 });
   }
 }

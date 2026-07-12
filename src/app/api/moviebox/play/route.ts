@@ -24,6 +24,22 @@ const tokenCache = new Map<string, TokenData>();
 const playCache = new Map<string, { data: any; expiry: number }>();
 const PLAY_CACHE_TTL = 30 * 60 * 1000; // 30 minutes cache TTL
 
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 5000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+}
+
 // Fetch and cache the guest bearer token by client IP (geographic region)
 async function getBearerToken(clientIp?: string | null): Promise<string> {
   const now = Date.now();
@@ -42,7 +58,7 @@ async function getBearerToken(clientIp?: string | null): Promise<string> {
       headers["X-Real-IP"] = clientIp;
     }
 
-    const res = await fetch(`${API_BASE}/home?host=moviebox.ph`, {
+    const res = await fetchWithTimeout(`${API_BASE}/home?host=moviebox.ph`, {
       method: "GET",
       headers,
     });
@@ -73,6 +89,7 @@ async function getBearerToken(clientIp?: string | null): Promise<string> {
     }
   } catch (error) {
     console.error("Error acquiring bearer token:", error);
+    throw error;
   }
 
   return "";
@@ -89,7 +106,7 @@ async function makeGetRequest(url: string, token: string, clientIp?: string | nu
     headers["X-Real-IP"] = clientIp;
   }
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: "GET",
     headers,
   });
@@ -112,7 +129,7 @@ async function makePostRequest(url: string, payload: any, token: string, clientI
     headers["X-Real-IP"] = clientIp;
   }
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: "POST",
     headers,
     body: JSON.stringify(payload),
@@ -134,6 +151,13 @@ function cleanTitle(str: string): string {
     .replace(/[^a-z0-9]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function shareSignificantWord(title1: string, title2: string): boolean {
+  const stopWords = new Set(["the", "a", "of", "and", "in", "to", "for", "with", "on", "at", "by", "an", "is", "this", "that", "from", "s", "season", "episode", "ep", "series", "movie", "show", "i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"]);
+  const words1 = cleanTitle(title1).split(/\s+/).filter(w => w && !stopWords.has(w));
+  const words2 = cleanTitle(title2).split(/\s+/).filter(w => w && !stopWords.has(w));
+  return words1.some(w => words2.includes(w));
 }
 
 function getMatchScore(itemTitle: string, targetTitle: string, requestedDub?: string | null): number {
@@ -174,8 +198,10 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const title = searchParams.get("title");
   const mediaType = searchParams.get("mediaType") || "movie";
-  const season = parseInt(searchParams.get("season") || "1", 10);
-  const episode = parseInt(searchParams.get("episode") || "1", 10);
+  let season = parseInt(searchParams.get("season") || "1", 10);
+  let episode = parseInt(searchParams.get("episode") || "1", 10);
+  if (isNaN(season) || season < 1) season = 1;
+  if (isNaN(episode) || episode < 1) episode = 1;
   const dub = searchParams.get("dub");
   const imdbId = searchParams.get("imdbId");
 
@@ -273,11 +299,13 @@ export async function GET(req: NextRequest) {
             score: si.score
           })), null, 2));
 
-          // Pick the item with the highest score if score > 0
+          // Pick the item with the highest score if score > 0, otherwise fallback to first search item if they share a word
           if (scoredItems.length > 0 && scoredItems[0].score > 0) {
             matchedItem = scoredItems[0].item;
-            break; // Found matches, break loop
+          } else if (itemsToMatch.length > 0 && shareSignificantWord(itemsToMatch[0].title || "", title)) {
+            matchedItem = itemsToMatch[0];
           }
+          break; // Found matches, break loop
         }
       } catch (err) {
         console.error(`Search failed for keyword ${keyword}:`, err);
@@ -354,7 +382,7 @@ export async function GET(req: NextRequest) {
     }
 
     // 2. Fetch media player domain
-    const domRes = await fetch(`${API_BASE}/media-player/get-domain`, {
+    const domRes = await fetchWithTimeout(`${API_BASE}/media-player/get-domain`, {
       headers: {
         ...DEFAULT_HEADERS,
         "Authorization": `Bearer ${token}`,
@@ -373,7 +401,7 @@ export async function GET(req: NextRequest) {
     const playUrl = `${API_BASE}/subject/play?subjectId=${subjectId}&se=${querySe}&ep=${queryEp}&detailPath=${detailPath}`;
 
     console.log(`Querying h5-api play URL: ${playUrl}`);
-    const playRes = await fetch(playUrl, {
+    const playRes = await fetchWithTimeout(playUrl, {
       headers: {
         ...DEFAULT_HEADERS,
         "Referer": playerReferer,
@@ -434,7 +462,7 @@ export async function GET(req: NextRequest) {
       try {
         const captionUrl = `${API_BASE}/subject/caption?format=${streamFormat}&id=${streamId}&subjectId=${subjectId}&detailPath=${detailPath}`;
         console.log(`Fetching captions from: ${captionUrl}`);
-        const capRes = await fetch(captionUrl, {
+        const capRes = await fetchWithTimeout(captionUrl, {
           headers: {
             ...DEFAULT_HEADERS,
             "Authorization": `Bearer ${token}`,
@@ -488,6 +516,9 @@ export async function GET(req: NextRequest) {
 
   } catch (error: any) {
     console.error("Error in MovieBox route:", error);
-    return NextResponse.json({ error: "Internal Server Error", details: error.message }, { status: 500 });
+    if (error.name === "AbortError") {
+      return NextResponse.json({ error: "Upstream server timeout" }, { status: 504 });
+    }
+    return NextResponse.json({ error: "Bad gateway", details: error.message }, { status: 502 });
   }
 }

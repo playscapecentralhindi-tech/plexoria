@@ -798,6 +798,7 @@ function CustomPlayer({
   const [adCountdown, setAdCountdown] = useState(5);
   const [canSkipAd, setCanSkipAd] = useState(false);
   const [adBypassed, setAdBypassed] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
   const adPlaybackTimeRef = useRef<number>(0);
   
   // Settings menu states
@@ -926,6 +927,26 @@ function CustomPlayer({
               video.play().then(() => setIsPlaying(true)).catch(() => {});
             }
           });
+          hls.on(Hls.Events.ERROR, (event, data) => {
+            if (data.fatal) {
+              console.warn(`Hls.js fatal error encountered: ${data.type}`);
+              switch (data.type) {
+                case Hls.ErrorTypes.NETWORK_ERROR:
+                  console.log("Fatal network error, trying to recover...");
+                  hls?.startLoad();
+                  break;
+                case Hls.ErrorTypes.MEDIA_ERROR:
+                  console.log("Fatal media error, trying to recover...");
+                  hls?.recoverMediaError();
+                  break;
+                default:
+                  console.error("Fatal unrecoverable HLS error:", data);
+                  setStreamError("Fatal playback stream error. Please try another quality or mirror.");
+                  hls?.destroy();
+                  break;
+              }
+            }
+          });
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
           video.src = url;
           if (autoPlay) {
@@ -987,8 +1008,11 @@ function CustomPlayer({
     hasRestoredProgressRef.current = false;
     setShowNextCountdown(false);
     setIgnoreCountdown(false);
-    setAdBypassed(false); // Reset ad bypass for new media
   }, [url]);
+
+  useEffect(() => {
+    setAdBypassed(false);
+  }, [mediaId, season, episode]);
 
   // Sleep Timer Handler
   useEffect(() => {
@@ -1077,7 +1101,7 @@ function CustomPlayer({
 
       // Next Episode countdown card trigger
       const timeRemaining = dur - cur;
-      if (dur > 60 && timeRemaining <= 20 && timeRemaining > 0.5 && !ignoreCountdown && autoNext) {
+      if (mediaType === "tv" && dur > 60 && timeRemaining <= 20 && timeRemaining > 0.5 && !ignoreCountdown && autoNext) {
         setShowNextCountdown(true);
         setCountdownSeconds(Math.ceil(timeRemaining));
       } else {
@@ -1086,10 +1110,37 @@ function CustomPlayer({
     }
   };
 
+  const handleVideoError = () => {
+    const video = videoRef.current;
+    if (!video || isAdPlaying) return; // Ignore ad errors since they bypass to main playback
+    const error = video.error;
+    let message = "An unknown media error occurred.";
+    if (error) {
+      switch (error.code) {
+        case error.MEDIA_ERR_ABORTED:
+          message = "Playback aborted by user.";
+          break;
+        case error.MEDIA_ERR_NETWORK:
+          message = "A network error caused the media download to fail.";
+          break;
+        case error.MEDIA_ERR_DECODE:
+          message = "The media playback was aborted due to a corruption problem or unsupported codec.";
+          break;
+        case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+          message = "The media format is not supported.";
+          break;
+      }
+    }
+    console.error("HTML5 video error:", message);
+    setStreamError(message);
+  };
+
   const handleLoadedMetadata = () => {
     const video = videoRef.current;
     if (!video) return;
     setDuration(video.duration);
+
+    if (isAdPlaying) return;
 
     if (!hasRestoredProgressRef.current) {
       try {
@@ -1526,6 +1577,17 @@ function CustomPlayer({
       onClick={handlePlayerClick}
       onWheel={handleWheel}
     >
+      {streamError && (
+        <div className="absolute inset-0 bg-black flex flex-col items-center justify-center p-6 gap-4 z-50 rounded-[16px]">
+          <div className="text-center space-y-1 max-w-sm">
+            <span className="text-[#E50914] text-[10px] font-extrabold font-mono tracking-widest uppercase block mb-1">Playback Error</span>
+            <h3 className="text-sm font-bold text-white">Stream failed to play</h3>
+            <p className="text-[11px] text-gray-400 leading-normal font-medium font-semibold">
+              {streamError}
+            </p>
+          </div>
+        </div>
+      )}
       {/* Background Poster (Fades on play) */}
       {!isVideoLoaded && posterUrl && (
         <div className="absolute inset-0 bg-cover bg-center z-15 transition-opacity duration-700 ease-out" style={{ backgroundImage: `url(${posterUrl})` }}>
@@ -1641,7 +1703,7 @@ function CustomPlayer({
       )}
 
       {/* Mobile Touch Lock Button */}
-      {showControls && (
+      {(showControls || isLocked) && (
         <button 
           onClick={(e) => {
             e.stopPropagation();
@@ -1718,6 +1780,7 @@ function CustomPlayer({
         onDurationChange={handleLoadedMetadata}
         onEnded={handleVideoEnded}
         onCanPlay={() => setIsVideoLoaded(true)}
+        onError={handleVideoError}
         className="w-full h-full object-contain z-10 transition-all duration-200"
         style={{ 
           objectFit: fitMode === "cover" ? "cover" : fitMode === "fill" ? "fill" : "contain"

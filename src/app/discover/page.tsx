@@ -1,17 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { tmdb, MediaType } from "@/lib/tmdb";
 import { Filter, Sparkles } from "lucide-react";
 import MovieCard, { SkeletonCard } from "@/components/MovieCard";
 import { motion } from "framer-motion";
 
-export default function DiscoverPage() {
+function DiscoverContent() {
+  const searchParams = useSearchParams();
   const [mediaType, setMediaType] = useState<MediaType>("movie");
   const [genre, setGenre] = useState("");
   const [year, setYear] = useState("");
   const [sortBy, setSortBy] = useState("popularity.desc");
+
+  useEffect(() => {
+    const typeParam = searchParams.get("type");
+    if (typeParam === "movie" || typeParam === "tv") {
+      setMediaType(typeParam as MediaType);
+    }
+  }, [searchParams]);
 
   const { data: genresData } = useQuery({
     queryKey: ["genres", mediaType],
@@ -159,5 +168,26 @@ export default function DiscoverPage() {
       </div>
 
     </div>
+  );
+}
+
+export default function DiscoverPage() {
+  return (
+    <Suspense fallback={
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pt-20 flex flex-col md:flex-row gap-8 select-none relative z-10">
+        <div className="w-full md:w-64 shrink-0 space-y-6 liquid-glass p-5 h-fit border border-white/10">
+          <div className="flex items-center gap-2 text-base font-extrabold border-b border-white/10 pb-3 text-white">
+            <Filter size={16} className="text-[#EF4444]" /> Catalog Filters
+          </div>
+        </div>
+        <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+          {[...Array(10)].map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      </div>
+    }>
+      <DiscoverContent />
+    </Suspense>
   );
 }
