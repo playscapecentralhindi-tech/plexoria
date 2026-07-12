@@ -237,3 +237,25 @@ h1, h2, h3, h4, h5, h6 {
   animation: fade-in-out 0.8s ease-in-out forwards;
 }
 
+/* Fullscreen Video Player styling */
+.is-fullscreen,
+div:fullscreen {
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  border-radius: 0px !important;
+  border: none !important;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left) !important;
+  background-color: #000000 !important;
+  z-index: 99999 !important;
+}
+
+/* Ensure native video element fills its container when fullscreen */
+.is-fullscreen video,
+div:fullscreen video {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+}

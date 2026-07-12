@@ -815,6 +815,7 @@ function CustomPlayer({
   const volumeIndicatorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const speedIndicatorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasRestoredProgressRef = useRef(false);
+  const wasDraggingRef = useRef(false);
 
   // Chapters computation
   const chaptersList = [
@@ -1009,19 +1010,71 @@ function CustomPlayer({
     }
   };
 
-  // Hide controls on inactivity
-  useEffect(() => {
-    if (showControls && isPlaying && !isLocked) {
-      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+  // Reset controls hide inactivity timer
+  const resetControlsTimeout = () => {
+    if (isLocked) return;
+    setShowControls(true);
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    if (isPlaying) {
       controlsTimeoutRef.current = setTimeout(() => {
         setShowControls(false);
         setIsSettingsOpen(false);
+        setActiveMenu(null);
       }, 3000);
+    }
+  };
+
+  // Sync controls visibility state changes with playback
+  useEffect(() => {
+    if (isPlaying) {
+      resetControlsTimeout();
+    } else {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+        controlsTimeoutRef.current = null;
+      }
+      setShowControls(true);
     }
     return () => {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
-  }, [showControls, isPlaying, isLocked]);
+  }, [isPlaying, isLocked]);
+
+  // Sync isFullscreen with native document fullscreen state and reflow layout
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+      setIsFullscreen(isCurrentlyFullscreen);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+
+    const handleResize = () => {
+      // Force trigger layout reflow redraw
+      window.dispatchEvent(new Event("resize-video-reflow"));
+    };
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
+    };
+  }, []);
 
   const handlePlayPause = () => {
     if (isLocked) {
@@ -1141,6 +1194,17 @@ function CustomPlayer({
       triggerLockPrompt();
       return;
     }
+
+    // Ignore events originating from control buttons, sliders, menus
+    if ((e.target as HTMLElement).closest("button, input, select, [role='button'], .no-click-through")) {
+      return;
+    }
+
+    if (wasDraggingRef.current) {
+      wasDraggingRef.current = false;
+      return;
+    }
+
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const isLeft = x < rect.width / 2;
@@ -1173,45 +1237,22 @@ function CustomPlayer({
     }
   };
 
-  // Long press for temporary 2x speed controls
-  const handleMouseDown = () => {
+  // Unified Pointer events handlers (Mouse + Touch)
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isLocked) return;
-    if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current);
-    longPressTimeoutRef.current = setTimeout(() => {
-      const video = videoRef.current;
-      if (video) {
-        video.playbackRate = 2.0;
-        setLongPressActive(true);
-        triggerHud("⚡", "2X Speed Holding");
-      }
-    }, 450);
-  };
+    if (!e.isPrimary) return;
 
-  const handleMouseUp = () => {
-    if (longPressTimeoutRef.current) {
-      clearTimeout(longPressTimeoutRef.current);
-      longPressTimeoutRef.current = null;
+    // Ignore events originating from control buttons, sliders, menus
+    if ((e.target as HTMLElement).closest("button, input, select, [role='button'], .no-click-through")) {
+      return;
     }
-    if (longPressActive) {
-      const video = videoRef.current;
-      if (video) {
-        video.playbackRate = playbackSpeed;
-      }
-      setLongPressActive(false);
-      triggerHud("⚡", `${playbackSpeed}x Speed`);
-    }
-  };
 
-  // Fullscreen touch swipe handler (brightness, volume, and scrub)
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (isLocked) return;
-    if (e.touches.length !== 1) return;
-    const touch = e.touches[0];
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = touch.clientX - rect.left;
-    const y = touch.clientY - rect.top;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
     touchStartRef.current = { x, y, time: Date.now(), scrubTime: currentTime };
+    wasDraggingRef.current = false;
 
     if (!isFullscreen) {
       touchTypeRef.current = "scrub";
@@ -1225,17 +1266,44 @@ function CustomPlayer({
         initialValRef.current = volume;
       }
     }
+
+    // Long press 2x speed timeout
+    if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current);
+    longPressTimeoutRef.current = setTimeout(() => {
+      const video = videoRef.current;
+      if (video && isPlaying) {
+        video.playbackRate = 2.0;
+        setLongPressActive(true);
+        triggerHud("⚡", "2X Speed Holding");
+      }
+    }, 450);
+
+    resetControlsTimeout();
   };
 
-  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (isLocked || !touchStartRef.current || !touchTypeRef.current) return;
-    const touch = e.touches[0];
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isLocked) return;
+
+    resetControlsTimeout();
+
+    if (!touchStartRef.current || !touchTypeRef.current) return;
+
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = touch.clientX - rect.left;
-    const y = touch.clientY - rect.top;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
     const deltaX = x - touchStartRef.current.x;
     const deltaY = touchStartRef.current.y - y;
+
+    // Displacement threshold for swipes/scrubs
+    if (Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) return;
+
+    wasDraggingRef.current = true;
+
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
 
     if (touchTypeRef.current === "scrub" || (!isFullscreen && Math.abs(deltaX) > Math.abs(deltaY) * 1.5)) {
       touchTypeRef.current = "scrub";
@@ -1266,7 +1334,20 @@ function CustomPlayer({
     }
   };
 
-  const handleTouchEnd = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+    if (longPressActive) {
+      const video = videoRef.current;
+      if (video) {
+        video.playbackRate = playbackSpeed;
+      }
+      setLongPressActive(false);
+      triggerHud("⚡", `${playbackSpeed}x Speed`);
+    }
+
     if (touchTypeRef.current === "scrub" && scrubPreviewTime !== null) {
       handleSeekChange(scrubPreviewTime);
       setScrubPreviewTime(null);
@@ -1327,26 +1408,14 @@ function CustomPlayer({
   return (
     <div 
       ref={containerRef}
-      className="relative w-full h-full group/player overflow-hidden flex items-center justify-center bg-black select-none rounded-[16px] border border-white/5 shadow-2xl"
-      onMouseMove={() => {
-        if (!isLocked) setShowControls(true);
-      }}
+      className={`relative w-full h-full group/player overflow-hidden flex items-center justify-center bg-black select-none rounded-[16px] border border-white/5 shadow-2xl ${
+        isFullscreen ? "is-fullscreen" : ""
+      }`}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
       onClick={handlePlayerClick}
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
-      onTouchStart={(e) => {
-        handleTouchStart(e);
-        handleMouseDown();
-      }}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={() => {
-        handleTouchEnd();
-        handleMouseUp();
-      }}
-      onTouchCancel={() => {
-        handleTouchEnd();
-        handleMouseUp();
-      }}
       onWheel={handleWheel}
     >
       {/* Background Poster (Fades on play) */}
