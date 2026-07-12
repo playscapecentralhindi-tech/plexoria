@@ -8,15 +8,15 @@
   --glass-bg: rgba(255, 255, 255, 0.03);
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-highlight: rgba(255, 255, 255, 0.12);
-  --accent-primary: #EF4444;
-  --accent-secondary: #B91C1C;
-  --accent-gradient: linear-gradient(135deg, #EF4444, #DC2626, #B91C1C);
+  --accent-primary: #E50914;
+  --accent-secondary: #B9090B;
+  --accent-gradient: linear-gradient(135deg, #E50914, #B9090B);
   --text-primary: #FFFFFF;
   --text-secondary: rgba(255, 255, 255, 0.7);
   --text-muted: rgba(255, 255, 255, 0.4);
   --rating-gold: #FBBF24;
   --success: #22C55E;
-  --error: #EF4444;
+  --error: #E50914;
 }
 
 body {

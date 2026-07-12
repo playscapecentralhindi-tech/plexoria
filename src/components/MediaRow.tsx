@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MediaItem, PaginatedResponse } from "@/lib/tmdb";
-import MovieCard, { SkeletonCard } from "./MovieCard";
+import MovieCard, { SkeletonCard, LandscapeCard, SkeletonLandscapeCard } from "./MovieCard";
 import { ChevronLeft, ChevronRight, Compass } from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -12,9 +12,10 @@ interface MediaRowProps {
   title: string;
   fetchFn: () => Promise<PaginatedResponse<MediaItem>>;
   mediaType: "movie" | "tv";
+  layout?: "poster" | "landscape" | "grid";
 }
 
-export default function MediaRow({ title, fetchFn, mediaType }: MediaRowProps) {
+export default function MediaRow({ title, fetchFn, mediaType, layout = "poster" }: MediaRowProps) {
   const rowRef = useRef<HTMLDivElement>(null);
 
   const { data, isLoading, error } = useQuery({
@@ -65,16 +66,16 @@ export default function MediaRow({ title, fetchFn, mediaType }: MediaRowProps) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-60px" }}
       transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-      className="relative py-6 pl-4 md:pl-12 group select-none overflow-hidden"
+      className="relative py-4 pl-4 md:pl-12 group select-none overflow-hidden"
     >
       {/* Title */}
-      <div className="flex items-center justify-between pr-4 md:pr-12 mb-4">
-        <h2 className="text-lg md:text-xl font-semibold text-white flex items-center tracking-wide border-l-4 border-[#EF4444] pl-3">
+      <div className="flex items-center justify-between pr-4 md:pr-12 mb-3">
+        <h2 className="text-lg md:text-xl font-semibold text-white flex items-center tracking-wide border-l-4 border-[#E50914] pl-3">
           {title}
         </h2>
         <Link 
           href={mediaType === "movie" ? "/discover?type=movie" : "/discover?type=tv"} 
-          className="flex items-center gap-1 text-xs text-gray-400 hover:text-[#EF4444] transition-colors font-medium group/viewall"
+          className="flex items-center gap-1 text-xs text-gray-400 hover:text-[#E50914] transition-colors font-medium group/viewall"
         >
           <span>View All</span>
           <ChevronRight size={14} className="group-hover/viewall:translate-x-0.5 transition-transform" />
@@ -84,19 +85,27 @@ export default function MediaRow({ title, fetchFn, mediaType }: MediaRowProps) {
       {/* Row Wrapper */}
       <div className="relative w-full">
         {/* Navigation Left Arrow */}
-        <button
-          onClick={() => handleScroll("left")}
-          className="absolute left-0 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 hover:bg-white/15 border border-white/10 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 backdrop-blur-sm z-30"
-          title="Scroll Left"
-        >
-          <ChevronLeft size={20} />
-        </button>
+        {layout !== "grid" && (
+          <button
+            onClick={() => handleScroll("left")}
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 hover:bg-white/15 border border-white/10 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 backdrop-blur-sm z-30"
+            title="Scroll Left"
+          >
+            <ChevronLeft size={20} />
+          </button>
+        )}
 
-        {/* Horizontal Scrollable Row */}
+        {/* Horizontal Scrollable Row or Static Grid */}
         {isLoading ? (
           <div className="flex gap-6 overflow-x-auto pb-4 scrollbar-hide pr-4 md:pr-12">
             {[...Array(6)].map((_, i) => (
-              <SkeletonCard key={i} />
+              layout === "landscape" ? <SkeletonLandscapeCard key={i} /> : <SkeletonCard key={i} />
+            ))}
+          </div>
+        ) : layout === "grid" ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6 pr-4 md:pr-12">
+            {items.map((item) => (
+              <MovieCard key={item.id} item={item} mediaType={mediaType} />
             ))}
           </div>
         ) : (
@@ -109,20 +118,26 @@ export default function MediaRow({ title, fetchFn, mediaType }: MediaRowProps) {
           >
             {items.map((item) => (
               <motion.div key={item.id} variants={itemVariants}>
-                <MovieCard item={item} mediaType={mediaType} />
+                {layout === "landscape" ? (
+                  <LandscapeCard item={item} mediaType={mediaType} />
+                ) : (
+                  <MovieCard item={item} mediaType={mediaType} />
+                )}
               </motion.div>
             ))}
           </motion.div>
         )}
 
         {/* Navigation Right Arrow */}
-        <button
-          onClick={() => handleScroll("right")}
-          className="absolute right-4 md:right-12 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 hover:bg-white/15 border border-white/10 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 backdrop-blur-sm z-30"
-          title="Scroll Right"
-        >
-          <ChevronRight size={20} />
-        </button>
+        {layout !== "grid" && (
+          <button
+            onClick={() => handleScroll("right")}
+            className="absolute right-4 md:right-12 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 hover:bg-white/15 border border-white/10 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 backdrop-blur-sm z-30"
+            title="Scroll Right"
+          >
+            <ChevronRight size={20} />
+          </button>
+        )}
       </div>
     </motion.section>
   );

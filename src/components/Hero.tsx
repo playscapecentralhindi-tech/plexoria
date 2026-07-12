@@ -113,15 +113,13 @@ export default function Hero() {
             <div className="flex flex-wrap items-center gap-2.5 text-xs md:text-sm font-semibold text-gray-300 select-text mb-1">
               {/* Stars & Rating */}
               <div className="flex items-center gap-1.5 text-[#FBBF24]">
-                <span className="tracking-tighter text-sm">
-                  {item.vote_average >= 9 ? "★★★★★" : item.vote_average >= 7 ? "★★★★☆" : item.vote_average >= 5 ? "★★★☆☆" : item.vote_average >= 3 ? "★★☆☆☆" : "★☆☆☆☆"}
-                </span>
+                <Star size={14} fill="currentColor" />
                 <span className="text-white font-extrabold">{item.vote_average?.toFixed(1)}</span>
               </div>
               
               <span className="text-gray-600">•</span>
               
-              <span className="capitalize text-white bg-[#EF4444]/15 border border-[#EF4444]/30 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider">
+              <span className="capitalize text-white bg-[#E50914]/15 border border-[#E50914]/30 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider">
                 {item.media_type === "tv" ? "TV Show" : "Movie"}
               </span>
               
@@ -135,20 +133,24 @@ export default function Hero() {
               {genres && (
                 <>
                   <span className="text-gray-600">•</span>
-                  <span className="text-gray-400 font-medium">{genres}</span>
+                  <span className="text-gray-400 font-medium truncate max-w-[150px] md:max-w-xs">{genres}</span>
                 </>
               )}
+
+              <span className="text-gray-600">•</span>
+              <span className="text-[10px] font-bold tracking-wider border border-white/20 px-1 py-0.5 rounded bg-white/5">1080P</span>
+              <span className="text-[10px] font-bold tracking-wider border border-white/20 px-1 py-0.5 rounded bg-white/5">MULTI-SUB</span>
             </div>
 
             {/* Static Typography Title */}
             <h1 
-              className="text-4xl md:text-6xl font-black text-white leading-tight select-text"
+              className="text-4xl md:text-6xl font-black text-white leading-tight select-text tracking-tight drop-shadow-md"
             >
               {item.title || item.name}
             </h1>
 
             {/* Synopsis */}
-            <p className="text-xs md:text-sm text-gray-300/90 line-clamp-3 leading-relaxed max-w-xl select-text">
+            <p className="text-xs md:text-sm text-gray-300/90 line-clamp-3 leading-relaxed max-w-xl select-text drop-shadow">
               {item.overview}
             </p>
 
@@ -156,7 +158,7 @@ export default function Hero() {
             <div className="flex items-center gap-4 pt-2">
               <Link
                 href={"/" + (item.media_type || "movie") + "?id=" + item.id}
-                className="flex items-center gap-2.5 bg-[#EF4444] hover:bg-red-600 text-white px-8 py-3.5 rounded-lg text-base font-extrabold transition-all hover:scale-[1.04] active:scale-95 duration-200 shadow-lg shadow-red-500/25"
+                className="flex items-center gap-2.5 bg-[#E50914] hover:bg-red-700 text-white px-8 py-3.5 rounded-lg text-base font-extrabold transition-all hover:scale-[1.04] active:scale-95 duration-200 shadow-lg shadow-red-500/25"
               >
                 <Play size={18} className="fill-current" /> Watch Now
               </Link>

@@ -376,6 +376,8 @@ export default function VideoPlayer({
                 playbackSpeed={playbackSpeed}
                 onSpeedChange={setPlaybackSpeed}
                 mediaId={id}
+                mediaTitle={title}
+                mediaType={mediaType}
                 season={season}
                 episode={episode}
                 onEnded={handleNextEpisode}
@@ -713,6 +715,8 @@ interface CustomPlayerProps {
   playbackSpeed: number;
   onSpeedChange?: (speed: number) => void;
   mediaId: string;
+  mediaTitle?: string;
+  mediaType?: "movie" | "tv";
   season: number;
   episode: number;
   onEnded: () => void;
@@ -732,6 +736,8 @@ function CustomPlayer({
   playbackSpeed,
   onSpeedChange,
   mediaId,
+  mediaTitle = "",
+  mediaType = "movie",
   season,
   episode,
   onEnded,
@@ -955,7 +961,13 @@ function CustomPlayer({
           quality: activeResolution,
           speed: playbackSpeed,
           subtitle: activeSubtitle,
-          updatedAt: Date.now()
+          updatedAt: Date.now(),
+          mediaId: mediaId,
+          mediaTitle: mediaTitle,
+          mediaType: mediaType,
+          season: season,
+          episode: episode,
+          posterUrl: posterUrl
         };
         localStorage.setItem("plexoria_playback_states", JSON.stringify(playbackStates));
       } catch (e) {
