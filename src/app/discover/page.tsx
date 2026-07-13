@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { tmdb, MediaType } from "@/lib/tmdb";
 import { Filter, Sparkles } from "lucide-react";
 import MovieCard, { SkeletonCard } from "@/components/MovieCard";
 import { motion } from "framer-motion";
+
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
 function DiscoverContent() {
   const searchParams = useSearchParams();
@@ -21,6 +23,14 @@ function DiscoverContent() {
       setMediaType(typeParam as MediaType);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    document.title = "Discover Movies & TV Shows — Plexoria";
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) {
+      metaDesc.setAttribute("content", "Explore and filter through Plexoria's vast collection of free streaming movies and TV shows by genre, media type, release year, and rating.");
+    }
+  }, []);
 
   const { data: genresData } = useQuery({
     queryKey: ["genres", mediaType],
@@ -56,18 +66,23 @@ function DiscoverContent() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pt-20 flex flex-col md:flex-row gap-8 select-none relative z-10">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pt-24 flex flex-col md:flex-row gap-8 select-none relative z-10 min-h-screen text-slate-300">
       
       {/* Sidebar Filters - Liquid Glass style */}
-      <div className="w-full md:w-64 shrink-0 space-y-6 liquid-glass p-5 h-fit border border-white/10">
-        <div className="flex items-center gap-2 text-base font-extrabold border-b border-white/10 pb-3 text-white">
+      <motion.div 
+        initial={{ opacity: 0, x: -30 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ type: "spring", stiffness: 350, damping: 25 }}
+        className="w-full md:w-64 shrink-0 space-y-6 liquid-glass p-5 h-fit border border-white/5"
+      >
+        <div className="flex items-center gap-2 text-base font-extrabold border-b border-white/5 pb-3 text-white">
           <Filter size={16} className="text-[#EF4444]" /> Catalog Filters
         </div>
 
         {/* Media type toggle */}
         <div className="space-y-2">
-          <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider">Media Type</label>
-          <div className="flex bg-black/45 p-1 rounded-xl border border-white/10">
+          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Media Type</label>
+          <div className="flex bg-black/45 p-1 rounded-xl border border-white/5">
             <button
               onClick={() => { setMediaType("movie"); setGenre(""); }}
               className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
@@ -93,11 +108,11 @@ function DiscoverContent() {
 
         {/* Genre Selector */}
         <div className="space-y-2">
-          <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider">Genre</label>
+          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Genre</label>
           <select
             value={genre}
             onChange={(e) => setGenre(e.target.value)}
-            className="w-full bg-black/60 border border-white/10 text-white text-xs font-semibold rounded-xl p-2.5 focus:outline-none focus:border-[#EF4444] cursor-pointer"
+            className="w-full bg-black/60 border border-white/5 text-white text-xs font-semibold rounded-xl p-2.5 focus:outline-none focus:border-[#EF4444] cursor-pointer"
           >
             <option value="" className="bg-[#0A0A0F]">All Genres</option>
             {genresData?.genres.map(g => (
@@ -108,23 +123,23 @@ function DiscoverContent() {
 
         {/* Year Filter */}
         <div className="space-y-2">
-          <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider">Release Year</label>
+          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Release Year</label>
           <input
             type="number"
             placeholder="e.g. 2024"
             value={year}
             onChange={(e) => setYear(e.target.value)}
-            className="w-full bg-black/60 border border-white/10 text-white text-xs font-semibold rounded-xl p-2.5 focus:outline-none focus:border-[#EF4444]"
+            className="w-full bg-black/60 border border-white/5 text-white text-xs font-semibold rounded-xl p-2.5 focus:outline-none focus:border-[#EF4444]"
           />
         </div>
 
         {/* Sorting options */}
         <div className="space-y-2">
-          <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider">Sort Results</label>
+          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Sort Results</label>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="w-full bg-black/60 border border-white/10 text-white text-xs font-semibold rounded-xl p-2.5 focus:outline-none focus:border-[#EF4444] cursor-pointer"
+            className="w-full bg-black/60 border border-white/5 text-white text-xs font-semibold rounded-xl p-2.5 focus:outline-none focus:border-[#EF4444] cursor-pointer"
           >
             <option value="popularity.desc" className="bg-[#0A0A0F]">Popularity Descending</option>
             <option value="popularity.asc" className="bg-[#0A0A0F]">Popularity Ascending</option>
@@ -133,7 +148,7 @@ function DiscoverContent() {
             <option value="primary_release_date.desc" className="bg-[#0A0A0F]">Release Date Descending</option>
           </select>
         </div>
-      </div>
+      </motion.div>
 
       {/* Results Grid layout */}
       <div className="flex-1">
@@ -144,13 +159,17 @@ function DiscoverContent() {
             ))}
           </div>
         ) : list.length === 0 ? (
-          <div className="text-center text-gray-400 py-20 bg-white/2 border border-white/5 rounded-2xl p-8 max-w-sm mx-auto flex flex-col items-center gap-3">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="text-center text-slate-400 py-20 bg-[#0A0A0F]/50 border border-white/5 rounded-2xl p-8 max-w-sm mx-auto flex flex-col items-center gap-3"
+          >
             <span className="text-3xl">🏜️</span>
-            <p className="font-bold text-sm text-gray-300">No matching titles</p>
-            <p className="text-xs text-gray-500 leading-normal">
-              No movies or TV shows matched your select combination filters.
+            <p className="font-bold text-sm text-white">No matching titles</p>
+            <p className="text-xs text-slate-500 leading-normal">
+              No movies or TV shows matched your selected combination filters.
             </p>
-          </div>
+          </motion.div>
         ) : (
           <motion.div
             variants={containerVariants}
@@ -174,9 +193,9 @@ function DiscoverContent() {
 export default function DiscoverPage() {
   return (
     <Suspense fallback={
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pt-20 flex flex-col md:flex-row gap-8 select-none relative z-10">
-        <div className="w-full md:w-64 shrink-0 space-y-6 liquid-glass p-5 h-fit border border-white/10">
-          <div className="flex items-center gap-2 text-base font-extrabold border-b border-white/10 pb-3 text-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pt-24 flex flex-col md:flex-row gap-8 select-none relative z-10 min-h-screen text-slate-300">
+        <div className="w-full md:w-64 shrink-0 space-y-6 liquid-glass p-5 h-fit border border-white/5">
+          <div className="flex items-center gap-2 text-base font-extrabold border-b border-white/5 pb-3 text-white">
             <Filter size={16} className="text-[#EF4444]" /> Catalog Filters
           </div>
         </div>

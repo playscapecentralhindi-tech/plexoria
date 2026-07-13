@@ -11,56 +11,41 @@ export async function GET(
 ) {
   const { path } = params;
   const searchParams = req.nextUrl.searchParams;
+  
+  // Construct the TMDB API URL
   const endpoint = path.join("/");
+  const url = new URL(`${process.env.TMDB_API_BASE}/${endpoint}`);
+  
+  // Append original query parameters
+  searchParams.forEach((value, key) => {
+    url.searchParams.append(key, value);
+  });
+  
+  // Append TMDB v3 API Key
+  if (process.env.TMDB_API_KEY) {
+    url.searchParams.append("api_key", process.env.TMDB_API_KEY);
+  }
+
+  const cacheKey = url.toString();
+  const cached = cache.get(cacheKey);
+  const now = Date.now();
+
+  if (cached && cached.expiry > now) {
+    console.log(`[Cache Hit] Serving TMDB request: ${endpoint}`);
+    return NextResponse.json(cached.data);
+  }
 
   try {
-    const apiBase = process.env.TMDB_API_BASE;
-    const apiKey = process.env.TMDB_API_KEY;
-
-    if (!apiBase || !apiKey) {
-      console.error("Missing TMDB configuration: TMDB_API_BASE or TMDB_API_KEY is not set.");
-      return NextResponse.json(
-        { error: "TMDB configuration missing on server" },
-        { status: 500 }
-      );
-    }
-
-    const url = new URL(`${apiBase}/${endpoint}`);
-    
-    // Append original query parameters
-    searchParams.forEach((value, key) => {
-      url.searchParams.append(key, value);
-    });
-    url.searchParams.append("api_key", apiKey);
-
-    const cacheKey = url.toString();
-    const cached = cache.get(cacheKey);
-    const now = Date.now();
-
-    if (cached && cached.expiry > now) {
-      console.log(`[Cache Hit] Serving TMDB request: ${endpoint}`);
-      return NextResponse.json(cached.data);
-    }
-
     const logUrl = new URL(url.toString());
     logUrl.searchParams.delete("api_key");
     console.log(`[Cache Miss] Querying TMDB: ${logUrl.toString()}`);
     
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    
-    let res;
-    try {
-      res = await fetch(url.toString(), {
-        headers: {
-          "Content-Type": "application/json",
-        },
-        signal: controller.signal,
-        next: { revalidate: 3600 }, // Fallback to Next.js native ISR
-      });
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    const res = await fetch(url.toString(), {
+      headers: {
+        "Content-Type": "application/json",
+      },
+      next: { revalidate: 3600 }, // Fallback to Next.js native ISR
+    });
 
     if (!res.ok) {
       console.error(`TMDB API Error: ${res.status} ${res.statusText}`);
@@ -84,14 +69,8 @@ export async function GET(
     cache.set(cacheKey, { data, expiry: now + cacheTtl });
 
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error) {
     console.error("TMDB proxy error:", error);
-    if (error.name === "AbortError") {
-      return NextResponse.json(
-        { error: "TMDB upstream request timed out" },
-        { status: 504 }
-      );
-    }
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }

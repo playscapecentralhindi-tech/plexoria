@@ -103,14 +103,33 @@ export default function Hero() {
         <AnimatePresence mode="wait">
           <motion.div
             key={item.id}
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.55, ease: "easeOut" }}
+            variants={{
+              hidden: { opacity: 0 },
+              visible: {
+                opacity: 1,
+                transition: {
+                  staggerChildren: 0.1,
+                  delayChildren: 0.1,
+                }
+              },
+              exit: {
+                opacity: 0,
+                transition: { duration: 0.25 }
+              }
+            }}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
             className="max-w-xl md:max-w-2xl flex flex-col items-start gap-4"
           >
             {/* Redesigned Metadata Row */}
-            <div className="flex flex-wrap items-center gap-2.5 text-xs md:text-sm font-semibold text-gray-300 select-text mb-1">
+            <motion.div 
+              variants={{
+                hidden: { opacity: 0, y: 15 },
+                visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }
+              }}
+              className="flex flex-wrap items-center gap-2.5 text-xs md:text-sm font-semibold text-gray-300 select-text mb-1"
+            >
               {/* Stars & Rating */}
               <div className="flex items-center gap-1.5 text-[#FBBF24]">
                 <Star size={14} fill="currentColor" />
@@ -140,37 +159,75 @@ export default function Hero() {
               <span className="text-gray-600">•</span>
               <span className="text-[10px] font-bold tracking-wider border border-white/20 px-1 py-0.5 rounded bg-white/5">1080P</span>
               <span className="text-[10px] font-bold tracking-wider border border-white/20 px-1 py-0.5 rounded bg-white/5">MULTI-SUB</span>
-            </div>
+            </motion.div>
 
             {/* Static Typography Title */}
-            <h1 
+            <motion.h1 
+              variants={{
+                hidden: { opacity: 0, y: 15 },
+                visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }
+              }}
               className="text-4xl md:text-6xl font-black text-white leading-tight select-text tracking-tight drop-shadow-md"
             >
               {item.title || item.name}
-            </h1>
+            </motion.h1>
 
             {/* Synopsis */}
-            <p className="text-xs md:text-sm text-gray-300/90 line-clamp-3 leading-relaxed max-w-xl select-text drop-shadow">
+            <motion.p 
+              variants={{
+                hidden: { opacity: 0, y: 15 },
+                visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }
+              }}
+              className="text-xs md:text-sm text-gray-300/90 line-clamp-3 leading-relaxed max-w-xl select-text drop-shadow"
+            >
               {item.overview}
-            </p>
+            </motion.p>
 
             {/* Action Buttons */}
-            <div className="flex items-center gap-4 pt-2">
+            <motion.div 
+              variants={{
+                hidden: { opacity: 0, y: 15 },
+                visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }
+              }}
+              className="flex items-center gap-4 pt-2"
+            >
               <Link
                 href={"/" + (item.media_type || "movie") + "?id=" + item.id}
-                className="flex items-center gap-2.5 bg-[#E50914] hover:bg-red-700 text-white px-8 py-3.5 rounded-lg text-base font-extrabold transition-all hover:scale-[1.04] active:scale-95 duration-200 shadow-lg shadow-red-500/25"
+                className="flex items-center gap-2 bg-[#EF4444] hover:bg-[#DC2626] text-white px-7 py-3 rounded-xl text-sm font-black transition-all hover:scale-[1.03] active:scale-98 duration-200 shadow-lg shadow-red-500/15"
               >
-                <Play size={18} className="fill-current" /> Watch Now
+                <Play size={16} className="fill-current ml-0.5" /> Watch Now
               </Link>
               <Link
                 href={"/" + (item.media_type || "movie") + "?id=" + item.id}
-                className="flex items-center gap-2 bg-black/40 hover:bg-white/10 border border-white/20 text-white px-7 py-3 rounded-lg text-sm font-bold transition-all backdrop-blur-sm"
+                className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/5 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all backdrop-blur-sm"
               >
-                <Info size={16} /> More Info
+                <Info size={15} /> More Info
               </Link>
-            </div>
+            </motion.div>
           </motion.div>
         </AnimatePresence>
+      </div>
+
+      {/* Slide Indicators with Progress Line */}
+      <div className="absolute right-4 sm:right-8 lg:right-12 bottom-12 z-30 flex items-center gap-2">
+        {validItems.map((_, idx) => (
+          <button
+            key={idx}
+            onClick={() => setActiveIndex(idx)}
+            className="group relative h-1.5 rounded-full overflow-hidden transition-all duration-300 cursor-pointer focus:outline-none"
+            style={{ width: activeIndex === idx ? "40px" : "12px", backgroundColor: "rgba(255, 255, 255, 0.2)" }}
+            aria-label={`Go to slide ${idx + 1}`}
+          >
+            {activeIndex === idx && (
+              <motion.div
+                initial={{ width: "0%" }}
+                animate={{ width: "100%" }}
+                transition={{ duration: 10, ease: "linear" }}
+                className="absolute top-0 left-0 bottom-0 bg-[#EF4444]"
+              />
+            )}
+          </button>
+        ))}
       </div>
     </div>
   );

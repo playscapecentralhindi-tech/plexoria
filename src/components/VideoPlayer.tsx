@@ -27,9 +27,28 @@ import {
   Subtitles,
   Volume1,
   Sun,
-  Loader2
+  Loader2,
+  Globe,
+  Server
 } from "lucide-react";
 import Hls from "hls.js";
+import { motion, AnimatePresence } from "framer-motion";
+
+const dropdownMenuVariants = {
+  hidden: { opacity: 0, y: 10, scale: 0.95 },
+  visible: { 
+    opacity: 1, 
+    y: 0, 
+    scale: 1,
+    transition: { duration: 0.15, ease: "easeOut" }
+  },
+  exit: { 
+    opacity: 0, 
+    y: 10, 
+    scale: 0.95,
+    transition: { duration: 0.1, ease: "easeIn" }
+  }
+};
 
 // Helper function to fetch and recursively parse VAST XML wrappers and media files
 async function parseVastXml(url: string, depth = 0): Promise<string | null> {
@@ -118,7 +137,6 @@ export default function VideoPlayer({
   const [activeSubtitle, setActiveSubtitle] = useState("");
   const [activeResolution, setActiveResolution] = useState("");
   const [streamError, setStreamError] = useState<string | null>(null);
-  const [selectedServerId, setSelectedServerId] = useState<number>(0);
   const [hasClickedPlay, setHasClickedPlay] = useState(false);
 
   const isPhpDeploy = typeof window !== 'undefined' && 
@@ -131,9 +149,15 @@ export default function VideoPlayer({
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
 
   // Dropdown open states
-  const [isServerOpen, setIsServerOpen] = useState(false);
+  const [isLanguageOpen, setIsLanguageOpen] = useState(false);
+  const [isServerDropdownOpen, setIsServerDropdownOpen] = useState(false);
   const [isSubtitleOpen, setIsSubtitleOpen] = useState(false);
   const [isPlaybackMenuOpen, setIsPlaybackMenuOpen] = useState(false);
+
+  // Dynamic streams selection
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("");
+  const [selectedServerName, setSelectedServerName] = useState<string>("");
+  const savedTimeRef = useRef<number>(0);
 
   // Episode Search state
   const [episodeSearchQuery, setEpisodeSearchQuery] = useState("");
@@ -152,34 +176,24 @@ export default function VideoPlayer({
     };
   }, []);
 
-  const [availableServers, setAvailableServers] = useState<ServerConfig[]>([
-    { id: 0, name: "Plexoria Server (SUB / Multi-Language)", status: "active", dub: "" },
-    { id: 200, name: "Plexoria Server (Hindi Dubbed)", status: "active", dub: "hindi" }
-  ]);
-
   // Reset play gesture trigger on episode/show change
   useEffect(() => {
     setHasClickedPlay(false);
-    setSelectedServerId(0);
-    setAvailableServers([
-      { id: 0, name: "Plexoria Server (SUB / Multi-Language)", status: "active", dub: "" },
-      { id: 200, name: "Plexoria Server (Hindi Dubbed)", status: "active", dub: "hindi" }
-    ]);
-  }, [mediaType, id, season, episode]);
+    setSelectedLanguage("");
+    setSelectedServerName("");
+  }, [season, episode, id, mediaType]);
 
-  // Fetch MovieBox Streams when servers or episodes change
+  // Fetch MovieBox Streams when episodes change
   useEffect(() => {
     let isMounted = true;
     const fetchMovieBoxStreams = async () => {
       setIsLoadingStream(true);
       setStreamError(null);
       try {
-        const currentServer = availableServers.find(s => s.id === selectedServerId) || availableServers[0];
-        const dubParam = currentServer ? currentServer.dub : "";
         const res = await fetch(
           isPhpDeploy
-            ? `/api/moviebox/play/index.php?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&dub=${dubParam}&imdbId=${encodeURIComponent(imdbId || "")}&_t=${Date.now()}`
-            : `/api/moviebox/play?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&dub=${dubParam}&imdbId=${encodeURIComponent(imdbId || "")}&_t=${Date.now()}`
+            ? `/api/moviebox/play/index.php?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&imdbId=${encodeURIComponent(imdbId || "")}&_t=${Date.now()}`
+            : `/api/moviebox/play?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&imdbId=${encodeURIComponent(imdbId || "")}&_t=${Date.now()}`
         );
         if (!res.ok) {
           let errMsg = "Failed to load Plexoria stream index";
@@ -196,53 +210,47 @@ export default function VideoPlayer({
           throw new Error(data.error);
         }
 
-        const availableStreams = [
-          ...(data.streams || []),
-          ...(data.hls || [])
-        ].filter((s: any) => s.url);
-
-        if (availableStreams.length === 0) {
+        const streams = data.streams || [];
+        if (streams.length === 0) {
           throw new Error("No free streaming sources available for this title");
         }
 
         if (!isMounted) return;
 
-        setStreamSources(availableStreams);
+        setStreamSources(streams);
         setCaptions(data.captions || []);
 
-        if (data.availableDubs && data.availableDubs.length > 0) {
-          setAvailableServers(data.availableDubs.map((d: any) => ({
-            id: d.id,
-            name: d.name,
-            status: "active",
-            dub: d.dub
-          })));
+        const languages = Array.from(new Set(streams.map((s: any) => s.language))) as string[];
+        let defaultLang = languages[0];
+        if (languages.includes("English SUB")) {
+          defaultLang = "English SUB";
         }
+        setSelectedLanguage(defaultLang);
 
-        const sorted = availableStreams.sort((a: any, b: any) => {
-          const resA = parseInt(a.resolution) || 0;
-          const resB = parseInt(b.resolution) || 0;
-          return resB - resA;
-        });
+        const langStreams = streams.filter((s: any) => s.language === defaultLang);
+        const sorted = langStreams.sort((a: any, b: any) => b.qualityScore - a.qualityScore);
+        const bestStream = sorted[0];
 
-        const highest = sorted[0];
-        const proxiedUrl = highest.url.startsWith("http")
+        setSelectedServerName(bestStream.serverName);
+
+        const proxiedUrl = bestStream.streamUrl.startsWith("http")
           ? (isPhpDeploy
-              ? `/api/moviebox/proxy-stream/index.php?url=${encodeURIComponent(highest.url)}`
-              : `/api/moviebox/proxy-stream?url=${encodeURIComponent(highest.url)}`)
-          : highest.url;
+              ? `/api/moviebox/proxy-stream/index.php?url=${encodeURIComponent(bestStream.streamUrl)}`
+              : `/api/moviebox/proxy-stream?url=${encodeURIComponent(bestStream.streamUrl)}`)
+          : bestStream.streamUrl;
+
         setCurrentStreamUrl(proxiedUrl);
-        setActiveResolution(highest.resolution);
+        setActiveResolution(bestStream.resolution);
 
         if (data.captions && data.captions.length > 0) {
           const engSub = data.captions.find((c: any) => 
             c.languageCode.toLowerCase() === "en" || c.language.toLowerCase().includes("english")
           );
-          const hinSub = data.captions.find((c: any) => 
-            c.languageCode.toLowerCase() === "hi" || c.language.toLowerCase().includes("hindi")
-          );
-          const defaultSub = engSub || hinSub || data.captions[0];
-          setActiveSubtitle(defaultSub.url);
+          if (engSub) {
+            setActiveSubtitle(engSub.url);
+          } else {
+            setActiveSubtitle(data.captions[0].url);
+          }
         } else {
           setActiveSubtitle("");
         }
@@ -262,7 +270,110 @@ export default function VideoPlayer({
     return () => {
       isMounted = false;
     };
-  }, [selectedServerId, season, episode, title, mediaType]);
+  }, [season, episode, title, mediaType]);
+
+  const savePlaybackState = () => {
+    const video = document.querySelector("video") as HTMLVideoElement;
+    if (!video) return;
+    try {
+      const cur = video.currentTime;
+      const dur = video.duration || 1;
+      const percentage = Math.round((cur / dur) * 100);
+      const key = `${id}_${season}_${episode}`;
+
+      const storedMap = localStorage.getItem("plexoria_watched_progress") || "{}";
+      const progressMap = JSON.parse(storedMap);
+      if (percentage > 95) {
+        progressMap[key] = 100;
+      } else if (percentage > 1) {
+        progressMap[key] = percentage;
+      }
+      localStorage.setItem("plexoria_watched_progress", JSON.stringify(progressMap));
+
+      const storedStates = localStorage.getItem("plexoria_playback_states") || "{}";
+      const playbackStates = JSON.parse(storedStates);
+      playbackStates[key] = {
+        timestamp: cur,
+        progress: percentage,
+        quality: activeResolution,
+        speed: playbackSpeed,
+        subtitle: activeSubtitle,
+        updatedAt: Date.now(),
+        mediaId: id,
+        mediaTitle: title,
+        mediaType: mediaType,
+        season: season,
+        episode: episode,
+        posterUrl: posterUrl
+      };
+      localStorage.setItem("plexoria_playback_states", JSON.stringify(playbackStates));
+    } catch (e) {
+      console.error("Failed to save state on stream swap:", e);
+    }
+  };
+
+  const handleLanguageChange = (lang: string) => {
+    savePlaybackState();
+    const video = document.querySelector("video") as HTMLVideoElement;
+    if (video) {
+      savedTimeRef.current = video.currentTime;
+    }
+    
+    setSelectedLanguage(lang);
+    setIsLanguageOpen(false);
+
+    const langStreams = streamSources.filter((s: any) => s.language === lang);
+    if (langStreams.length === 0) return;
+
+    const sorted = langStreams.sort((a: any, b: any) => b.qualityScore - a.qualityScore);
+    const bestStream = sorted[0];
+    setSelectedServerName(bestStream.serverName);
+
+    const proxiedUrl = bestStream.streamUrl.startsWith("http")
+      ? (isPhpDeploy
+          ? `/api/moviebox/proxy-stream/index.php?url=${encodeURIComponent(bestStream.streamUrl)}`
+          : `/api/moviebox/proxy-stream?url=${encodeURIComponent(bestStream.streamUrl)}`)
+      : bestStream.streamUrl;
+
+    // Reset restored flag for custom player loadedmetadata hook
+    const playerRestoredRef = document.getElementById("has-restored-ref");
+    if (playerRestoredRef) {
+      playerRestoredRef.setAttribute("data-restored", "false");
+    }
+
+    setCurrentStreamUrl(proxiedUrl);
+    setActiveResolution(bestStream.resolution);
+  };
+
+  const handleServerChange = (srvName: string) => {
+    savePlaybackState();
+    const video = document.querySelector("video") as HTMLVideoElement;
+    if (video) {
+      savedTimeRef.current = video.currentTime;
+    }
+
+    setSelectedServerName(srvName);
+    setIsServerDropdownOpen(false);
+
+    const targetStream = streamSources.find(
+      (s: any) => s.language === selectedLanguage && s.serverName === srvName
+    );
+    if (!targetStream) return;
+
+    const proxiedUrl = targetStream.streamUrl.startsWith("http")
+      ? (isPhpDeploy
+          ? `/api/moviebox/proxy-stream/index.php?url=${encodeURIComponent(targetStream.streamUrl)}`
+          : `/api/moviebox/proxy-stream?url=${encodeURIComponent(targetStream.streamUrl)}`)
+      : targetStream.streamUrl;
+
+    const playerRestoredRef = document.getElementById("has-restored-ref");
+    if (playerRestoredRef) {
+      playerRestoredRef.setAttribute("data-restored", "false");
+    }
+
+    setCurrentStreamUrl(proxiedUrl);
+    setActiveResolution(targetStream.resolution);
+  };
 
   const handleNextEpisode = () => {
     if (onEpisodeChange && episode < totalEpisodes) {
@@ -276,12 +387,10 @@ export default function VideoPlayer({
     }
   };
 
-  // Generate list of Next Episodes, Search Matches, and Recently Watched
   const nextEpisodes = episodesList
     .filter((ep: any) => ep.episode_number > episode)
     .slice(0, 3);
 
-  // Read recently watched episodes from local progress Map
   const [recentEpisodes, setRecentEpisodes] = useState<any[]>([]);
 
   useEffect(() => {
@@ -289,11 +398,8 @@ export default function VideoPlayer({
       try {
         const stored = localStorage.getItem("plexoria_watched_progress") || "{}";
         const progressMap = JSON.parse(stored);
-        
-        // Find watched episodes for this tv show from the current season
         const watched = episodesList.filter((ep: any) => {
           const key = `${id}_${season}_${ep.episode_number}`;
-          // consider watched if it exists in progress map
           return progressMap[key] !== undefined && ep.episode_number !== episode;
         }).slice(0, 3);
         setRecentEpisodes(watched);
@@ -303,7 +409,6 @@ export default function VideoPlayer({
     }
   }, [episodesList, episode, mediaType, id, season, isSearchFocused]);
 
-  // Matches based on search query
   const matchingEpisodes = episodeSearchQuery.trim()
     ? episodesList.filter((ep: any) => {
         const q = episodeSearchQuery.toLowerCase();
@@ -313,8 +418,6 @@ export default function VideoPlayer({
       })
     : [];
 
-  const selectedServer = availableServers.find(s => s.id === selectedServerId) || availableServers[0];
-
   return (
     <div className="w-full flex flex-col gap-4 relative z-20">
       
@@ -323,11 +426,14 @@ export default function VideoPlayer({
         <div className="fixed inset-0 bg-black/95 z-40 pointer-events-none transition-opacity duration-500" />
       )}
 
-      {/* Main Video Player Container (Netflix-style rounded corners) */}
+      {/* Dummy flag element to track stream changes across parent/children scopes */}
+      <span id="has-restored-ref" data-restored="false" className="hidden"></span>
+
+      {/* 📺 Premium Video Player Canvas Frame */}
       <div 
-        className="w-full aspect-video bg-black rounded-[20px] border border-white/10 overflow-hidden shadow-2xl relative z-40"
-        style={{ boxShadow: "0 10px 30px rgba(0,0,0,.35)" }}
+        className="w-full aspect-video bg-black rounded-2xl overflow-hidden border border-white/5 shadow-2xl relative select-none flex items-center justify-center"
       >
+        
         {/* Poster Still Background when player is idle / hasn't clicked play */}
         {!hasClickedPlay && (
           <div 
@@ -349,7 +455,7 @@ export default function VideoPlayer({
 
             {/* Play Button Overlay */}
             <div className="relative z-20 flex flex-col items-center text-center px-6">
-              <div className="w-16 h-16 rounded-full bg-[#E50914] text-white flex items-center justify-center shadow-2xl transform transition-all duration-300 group-hover:scale-110 active:scale-95">
+              <div className="w-16 h-16 rounded-full bg-[#EF4444] text-white flex items-center justify-center shadow-2xl transform transition-all duration-300 group-hover:scale-110 active:scale-95">
                 <Play size={26} className="fill-current ml-1" />
               </div>
               
@@ -368,7 +474,7 @@ export default function VideoPlayer({
               </p>
 
               {episodeTitle && (
-                <p className="text-xs text-[#E50914] font-medium mt-1">
+                <p className="text-xs text-[#EF4444] font-medium mt-1">
                   "{episodeTitle}"
                 </p>
               )}
@@ -376,16 +482,16 @@ export default function VideoPlayer({
           </div>
         )}
 
-        <div className="relative w-full h-full bg-black flex items-center justify-center">
+        <div className="absolute inset-0 z-10 flex items-center justify-center">
           {isLoadingStream ? (
             <div className="flex flex-col items-center gap-3">
-              <div className="w-10 h-10 rounded-full border-4 border-[#E50914]/20 border-t-[#E50914] animate-spin"></div>
+              <div className="w-10 h-10 rounded-full border-4 border-[#EF4444]/20 border-t-[#EF4444] animate-spin"></div>
               <span className="text-xs text-gray-400 font-semibold">Resolving secure streams...</span>
             </div>
           ) : streamError ? (
             <div className="relative w-full h-full bg-black flex flex-col items-center justify-center p-6 gap-4">
               <div className="text-center space-y-1 max-w-sm">
-                <span className="text-[#E50914] text-[10px] font-extrabold font-mono tracking-widest uppercase block mb-1">Streaming Alert</span>
+                <span className="text-[#EF4444] text-[10px] font-extrabold font-mono tracking-widest uppercase block mb-1">Streaming Alert</span>
                 <h3 className="text-sm font-bold text-white">Stream currently unavailable</h3>
                 <p className="text-[11px] text-gray-400 leading-normal font-medium">
                   {streamError || "MovieBox failed to resolve the media streaming source. Please try again later or refresh the page."}
@@ -399,16 +505,10 @@ export default function VideoPlayer({
                 captions={captions}
                 activeSubtitle={activeSubtitle}
                 onSubtitleChange={setActiveSubtitle}
-                resolutions={streamSources}
+                resolutions={streamSources.filter((s: any) => s.language === selectedLanguage)}
                 activeResolution={activeResolution}
                 onResolutionChange={(resObj: any) => {
-                  const proxied = resObj.url.startsWith("http")
-                    ? (isPhpDeploy
-                        ? `/api/moviebox/proxy-stream/index.php?url=${encodeURIComponent(resObj.url)}`
-                        : `/api/moviebox/proxy-stream?url=${encodeURIComponent(resObj.url)}`)
-                    : resObj.url;
-                  setCurrentStreamUrl(proxied);
-                  setActiveResolution(resObj.resolution);
+                  handleServerChange(resObj.serverName);
                 }}
                 autoPlay={autoPlay}
                 autoNext={autoNext}
@@ -438,42 +538,121 @@ export default function VideoPlayer({
         {/* Dropdowns on the left */}
         <div className="flex flex-wrap items-center gap-3">
           
-          {/* Server / Dub selection */}
+          {/* Language selection */}
           <div className="relative">
             <button 
               onClick={() => {
-                setIsServerOpen(!isServerOpen);
+                setIsLanguageOpen(!isLanguageOpen);
+                setIsServerDropdownOpen(false);
                 setIsSubtitleOpen(false);
                 setIsPlaybackMenuOpen(false);
               }}
               className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
             >
-              <span>Server: {selectedServer.dub === "hindi" ? "Hindi DUB" : "English SUB"}</span>
+              <Globe size={13} className="text-[#EF4444]" />
+              <span>Language: {selectedLanguage || "Detecting..."}</span>
               <ChevronDown size={14} className="text-gray-400" />
             </button>
 
-            {isServerOpen && (
-              <div className="absolute left-0 bottom-12 mb-1 w-64 bg-[#171717]/95 backdrop-blur-md border border-white/10 rounded-[14px] p-1.5 flex flex-col gap-0.5 shadow-2xl z-50">
-                <span className="px-2.5 py-1 text-[9px] text-gray-500 font-extrabold uppercase tracking-wider">HLS Streams</span>
-                {availableServers.map((srv) => (
-                  <button
-                    key={srv.id}
-                    onClick={() => {
-                      setSelectedServerId(srv.id);
-                      setIsServerOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-xs font-semibold transition-colors ${
-                      srv.id === selectedServerId 
-                        ? "bg-[#E50914]/10 text-[#E50914]" 
-                        : "text-gray-300 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
-                    <span>{srv.dub === "hindi" ? "🎙 Hindi Dubbed" : "🎬 Subtitled (English/Multi)"}</span>
-                    {srv.id === selectedServerId && <Check size={12} className="text-[#E50914]" />}
-                  </button>
-                ))}
-              </div>
-            )}
+            <AnimatePresence>
+              {isLanguageOpen && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="absolute left-0 bottom-12 mb-1 w-64 bg-[#171717]/95 backdrop-blur-md border border-white/10 rounded-[14px] p-1.5 flex flex-col gap-0.5 shadow-2xl z-50 animate-fade-in max-h-60 overflow-y-auto"
+                >
+                  <span className="px-2.5 py-1 text-[9px] text-gray-500 font-extrabold uppercase tracking-wider">Audio Channels</span>
+                  {Array.from(new Set(streamSources.map((s: any) => s.language))).map((lang: any) => {
+                    const isSelected = lang === selectedLanguage;
+                    const langStreams = streamSources.filter(s => s.language === lang);
+                    const bestRes = langStreams.sort((a,b) => b.qualityScore - a.qualityScore)[0]?.resolution || "1080p";
+                    const isDub = lang.toLowerCase().includes("dub");
+                    const isOriginal = lang.toLowerCase().includes("original");
+
+                    return (
+                      <button
+                        key={lang}
+                        onClick={() => handleLanguageChange(lang)}
+                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-xs font-semibold transition-colors ${
+                          isSelected 
+                            ? "bg-[#EF4444]/10 text-[#EF4444]" 
+                            : "text-gray-300 hover:bg-white/5 hover:text-white"
+                        }`}
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <span className="flex items-center gap-1.5 font-bold">
+                            {isDub ? "🎙️" : isOriginal ? "🌸" : "🎬"} {lang}
+                          </span>
+                          <span className="text-[10px] text-gray-500 font-medium">
+                            Max quality: {bestRes} • {langStreams.length} server(s)
+                          </span>
+                        </div>
+                        {isSelected && <Check size={12} className="text-[#EF4444]" />}
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Server / Provider selection */}
+          <div className="relative">
+            <button 
+              onClick={() => {
+                setIsServerDropdownOpen(!isServerDropdownOpen);
+                setIsLanguageOpen(false);
+                setIsSubtitleOpen(false);
+                setIsPlaybackMenuOpen(false);
+              }}
+              className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
+              disabled={!selectedLanguage}
+            >
+              <Server size={13} className="text-[#EF4444]" />
+              <span>Server: {selectedServerName || "Detecting..."}</span>
+              <ChevronDown size={14} className="text-gray-400" />
+            </button>
+
+            <AnimatePresence>
+              {isServerDropdownOpen && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="absolute left-0 bottom-12 mb-1 w-64 bg-[#171717]/95 backdrop-blur-md border border-white/10 rounded-[14px] p-1.5 flex flex-col gap-0.5 shadow-2xl z-50 animate-fade-in max-h-60 overflow-y-auto"
+                >
+                  <span className="px-2.5 py-1 text-[9px] text-gray-500 font-extrabold uppercase tracking-wider">Available Servers ({selectedLanguage})</span>
+                  {streamSources.filter((s: any) => s.language === selectedLanguage).map((srv: any) => {
+                    const isSelected = srv.serverName === selectedServerName;
+                    return (
+                      <button
+                        key={srv.serverName}
+                        onClick={() => handleServerChange(srv.serverName)}
+                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-xs font-semibold transition-colors ${
+                          isSelected 
+                            ? "bg-[#EF4444]/10 text-[#EF4444]" 
+                            : "text-gray-300 hover:bg-white/5 hover:text-white"
+                        }`}
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-bold">{srv.serverName}</span>
+                          <span className="text-[10px] text-gray-500 font-medium">
+                            {srv.resolution} • {srv.codec} {srv.hdr ? "• HDR" : ""}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                          {isSelected && <Check size={12} className="text-[#EF4444]" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Subtitles (CC) selection */}
@@ -481,7 +660,8 @@ export default function VideoPlayer({
             <button 
               onClick={() => {
                 setIsSubtitleOpen(!isSubtitleOpen);
-                setIsServerOpen(false);
+                setIsLanguageOpen(false);
+                setIsServerDropdownOpen(false);
                 setIsPlaybackMenuOpen(false);
               }}
               className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
@@ -499,12 +679,12 @@ export default function VideoPlayer({
                   }}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs font-semibold ${
                     !activeSubtitle 
-                      ? "bg-[#E50914]/10 text-[#E50914]" 
+                      ? "bg-[#EF4444]/10 text-[#EF4444]" 
                       : "text-gray-300 hover:bg-white/5 hover:text-white"
                   }`}
                 >
                   <span>Off</span>
-                  {!activeSubtitle && <Check size={12} className="text-[#E50914]" />}
+                  {!activeSubtitle && <Check size={12} className="text-[#EF4444]" />}
                 </button>
                 {captions.map((cap) => (
                   <button
@@ -515,12 +695,12 @@ export default function VideoPlayer({
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs font-semibold ${
                       cap.url === activeSubtitle 
-                        ? "bg-[#E50914]/10 text-[#E50914]" 
+                        ? "bg-[#EF4444]/10 text-[#EF4444]" 
                         : "text-gray-300 hover:bg-white/5 hover:text-white"
                     }`}
                   >
                     <span>{cap.language}</span>
-                    {cap.url === activeSubtitle && <Check size={12} className="text-[#E50914]" />}
+                    {cap.url === activeSubtitle && <Check size={12} className="text-[#EF4444]" />}
                   </button>
                 ))}
               </div>
@@ -532,7 +712,8 @@ export default function VideoPlayer({
             <button 
               onClick={() => {
                 setIsPlaybackMenuOpen(!isPlaybackMenuOpen);
-                setIsServerOpen(false);
+                setIsLanguageOpen(false);
+                setIsServerDropdownOpen(false);
                 setIsSubtitleOpen(false);
               }}
               className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
@@ -552,7 +733,7 @@ export default function VideoPlayer({
                     type="checkbox" 
                     checked={autoPlay} 
                     onChange={(e) => setAutoPlay(e.target.checked)}
-                    className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
+                    className="accent-[#EF4444] rounded border-white/10 w-4 h-4 cursor-pointer"
                   />
                 </label>
 
@@ -562,7 +743,7 @@ export default function VideoPlayer({
                     type="checkbox" 
                     checked={autoNext} 
                     onChange={(e) => setAutoNext(e.target.checked)}
-                    className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
+                    className="accent-[#EF4444] rounded border-white/10 w-4 h-4 cursor-pointer"
                   />
                 </label>
 
@@ -572,7 +753,7 @@ export default function VideoPlayer({
                     type="checkbox" 
                     checked={dimLights} 
                     onChange={(e) => setDimLights(e.target.checked)}
-                    className="accent-[#E50914] rounded border-white/10 w-4 h-4 cursor-pointer"
+                    className="accent-[#EF4444] rounded border-white/10 w-4 h-4 cursor-pointer"
                   />
                 </label>
 
@@ -588,7 +769,7 @@ export default function VideoPlayer({
                         }}
                         className={`flex-1 py-1 rounded text-[10px] font-bold text-center border transition-all ${
                           playbackSpeed === spd 
-                            ? "bg-[#E50914] border-[#E50914] text-white" 
+                            ? "bg-[#EF4444] border-[#EF4444] text-white" 
                             : "bg-[#1E1E1E] border-white/5 hover:bg-white/5 text-gray-300"
                         }`}
                       >
@@ -615,12 +796,13 @@ export default function VideoPlayer({
                 onChange={(e) => setEpisodeSearchQuery(e.target.value)}
                 onFocus={() => {
                   setIsSearchFocused(true);
-                  setIsServerOpen(false);
+                  setIsLanguageOpen(false);
+                  setIsServerDropdownOpen(false);
                   setIsSubtitleOpen(false);
                   setIsPlaybackMenuOpen(false);
                 }}
                 placeholder="Search or Jump to Episode... [e.g., '12' or 'final']"
-                className="w-full h-10 pl-9 pr-4 bg-[#1E1E1E] hover:bg-[#242424] focus:bg-[#242424] text-white font-semibold rounded-[12px] border border-white/5 focus:border-[#E50914]/50 focus:outline-none transition-all placeholder-gray-500 text-xs"
+                className="w-full h-10 pl-9 pr-4 bg-[#1E1E1E] hover:bg-[#242424] focus:bg-[#242424] text-white font-semibold rounded-[12px] border border-white/5 focus:border-[#EF4444]/50 focus:outline-none transition-all placeholder-gray-500 text-xs"
               />
             </div>
 
@@ -641,7 +823,7 @@ export default function VideoPlayer({
                             setIsSearchFocused(false);
                           }}
                           className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs font-semibold hover:bg-white/5 transition-colors ${
-                            ep.episode_number === episode ? "text-[#E50914]" : "text-gray-300"
+                            ep.episode_number === episode ? "text-[#EF4444]" : "text-gray-300"
                           }`}
                         >
                           <span className="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center text-[10px] shrink-0 font-bold">
@@ -726,7 +908,7 @@ export default function VideoPlayer({
               <button 
                 onClick={handleNextEpisode}
                 disabled={episode >= totalEpisodes}
-                className="h-10 px-4 bg-[#E50914] hover:bg-[#b0070f] text-white font-bold rounded-[12px] flex items-center gap-1 transition-colors disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                className="h-10 px-4 bg-[#EF4444] hover:bg-[#DC2626] text-white font-bold rounded-[12px] flex items-center gap-1 transition-colors disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
               >
                 <span>Next Episode →</span>
               </button>
@@ -798,7 +980,6 @@ function CustomPlayer({
   const [adCountdown, setAdCountdown] = useState(5);
   const [canSkipAd, setCanSkipAd] = useState(false);
   const [adBypassed, setAdBypassed] = useState(false);
-  const [streamError, setStreamError] = useState<string | null>(null);
   const adPlaybackTimeRef = useRef<number>(0);
   
   // Settings menu states
@@ -927,26 +1108,6 @@ function CustomPlayer({
               video.play().then(() => setIsPlaying(true)).catch(() => {});
             }
           });
-          hls.on(Hls.Events.ERROR, (event, data) => {
-            if (data.fatal) {
-              console.warn(`Hls.js fatal error encountered: ${data.type}`);
-              switch (data.type) {
-                case Hls.ErrorTypes.NETWORK_ERROR:
-                  console.log("Fatal network error, trying to recover...");
-                  hls?.startLoad();
-                  break;
-                case Hls.ErrorTypes.MEDIA_ERROR:
-                  console.log("Fatal media error, trying to recover...");
-                  hls?.recoverMediaError();
-                  break;
-                default:
-                  console.error("Fatal unrecoverable HLS error:", data);
-                  setStreamError("Fatal playback stream error. Please try another quality or mirror.");
-                  hls?.destroy();
-                  break;
-              }
-            }
-          });
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
           video.src = url;
           if (autoPlay) {
@@ -1008,11 +1169,8 @@ function CustomPlayer({
     hasRestoredProgressRef.current = false;
     setShowNextCountdown(false);
     setIgnoreCountdown(false);
+    setAdBypassed(false); // Reset ad bypass for new media
   }, [url]);
-
-  useEffect(() => {
-    setAdBypassed(false);
-  }, [mediaId, season, episode]);
 
   // Sleep Timer Handler
   useEffect(() => {
@@ -1101,7 +1259,7 @@ function CustomPlayer({
 
       // Next Episode countdown card trigger
       const timeRemaining = dur - cur;
-      if (mediaType === "tv" && dur > 60 && timeRemaining <= 20 && timeRemaining > 0.5 && !ignoreCountdown && autoNext) {
+      if (dur > 60 && timeRemaining <= 20 && timeRemaining > 0.5 && !ignoreCountdown && autoNext) {
         setShowNextCountdown(true);
         setCountdownSeconds(Math.ceil(timeRemaining));
       } else {
@@ -1110,37 +1268,16 @@ function CustomPlayer({
     }
   };
 
-  const handleVideoError = () => {
-    const video = videoRef.current;
-    if (!video || isAdPlaying) return; // Ignore ad errors since they bypass to main playback
-    const error = video.error;
-    let message = "An unknown media error occurred.";
-    if (error) {
-      switch (error.code) {
-        case error.MEDIA_ERR_ABORTED:
-          message = "Playback aborted by user.";
-          break;
-        case error.MEDIA_ERR_NETWORK:
-          message = "A network error caused the media download to fail.";
-          break;
-        case error.MEDIA_ERR_DECODE:
-          message = "The media playback was aborted due to a corruption problem or unsupported codec.";
-          break;
-        case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
-          message = "The media format is not supported.";
-          break;
-      }
-    }
-    console.error("HTML5 video error:", message);
-    setStreamError(message);
-  };
-
   const handleLoadedMetadata = () => {
     const video = videoRef.current;
     if (!video) return;
     setDuration(video.duration);
 
-    if (isAdPlaying) return;
+    const tracker = typeof document !== "undefined" ? document.getElementById("has-restored-ref") : null;
+    if (tracker && tracker.getAttribute("data-restored") === "false") {
+      hasRestoredProgressRef.current = false;
+      tracker.setAttribute("data-restored", "true");
+    }
 
     if (!hasRestoredProgressRef.current) {
       try {
@@ -1226,6 +1363,77 @@ function CustomPlayer({
       window.removeEventListener("orientationchange", handleResize);
     };
   }, []);
+
+  // Keyboard controls listener (Space, Arrows, F, M)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept shortcuts when typing in inputs/textareas
+      if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
+        return;
+      }
+
+      // Check if player container is active or fullscreen
+      if (!isFullscreen && containerRef.current && !containerRef.current.contains(document.activeElement)) {
+        // Only run shortcuts if container is focused or is currently fullscreen
+        return;
+      }
+
+      const video = videoRef.current;
+      if (!video) return;
+
+      switch (e.key) {
+        case " ":
+          e.preventDefault();
+          handlePlayPause();
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          const targetForward = Math.min(video.duration || 0, video.currentTime + 10);
+          video.currentTime = targetForward;
+          triggerHud("⏩", "+10s");
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          const targetBack = Math.max(0, video.currentTime - 10);
+          video.currentTime = targetBack;
+          triggerHud("⏪", "-10s");
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          const nextVolumeUp = Math.min(1.0, video.volume + 0.1);
+          video.volume = nextVolumeUp;
+          setVolume(nextVolumeUp);
+          setIsMuted(nextVolumeUp === 0);
+          triggerHud("🔊", `${Math.round(nextVolumeUp * 100)}%`);
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          const nextVolumeDown = Math.max(0.0, video.volume - 0.1);
+          video.volume = nextVolumeDown;
+          setVolume(nextVolumeDown);
+          setIsMuted(nextVolumeDown === 0);
+          triggerHud("🔊", `${Math.round(nextVolumeDown * 100)}%`);
+          break;
+        case "f":
+        case "F":
+          e.preventDefault();
+          toggleFullscreen();
+          break;
+        case "m":
+        case "M":
+          e.preventDefault();
+          toggleMute();
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isFullscreen, isMuted, volume]);
 
   const handlePlayPause = () => {
     if (isLocked) {
@@ -1577,22 +1785,11 @@ function CustomPlayer({
       onClick={handlePlayerClick}
       onWheel={handleWheel}
     >
-      {streamError && (
-        <div className="absolute inset-0 bg-black flex flex-col items-center justify-center p-6 gap-4 z-50 rounded-[16px]">
-          <div className="text-center space-y-1 max-w-sm">
-            <span className="text-[#E50914] text-[10px] font-extrabold font-mono tracking-widest uppercase block mb-1">Playback Error</span>
-            <h3 className="text-sm font-bold text-white">Stream failed to play</h3>
-            <p className="text-[11px] text-gray-400 leading-normal font-medium font-semibold">
-              {streamError}
-            </p>
-          </div>
-        </div>
-      )}
       {/* Background Poster (Fades on play) */}
       {!isVideoLoaded && posterUrl && (
         <div className="absolute inset-0 bg-cover bg-center z-15 transition-opacity duration-700 ease-out" style={{ backgroundImage: `url(${posterUrl})` }}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-xl flex flex-col items-center justify-center gap-4">
-            <Loader2 className="w-10 h-10 text-[#E50914] animate-spin" />
+            <Loader2 className="w-10 h-10 text-[#EF4444] animate-spin" />
             <span className="text-xs text-gray-300 font-extrabold uppercase tracking-widest animate-pulse">Initializing Stream...</span>
           </div>
         </div>
@@ -1607,7 +1804,7 @@ function CustomPlayer({
       {/* Touch Lock Overlay prompt */}
       {showLockPrompt && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/85 backdrop-blur-md border border-white/10 rounded-2xl px-6 py-4 flex flex-col items-center gap-2 shadow-2xl z-40 pointer-events-none animate-pulse">
-          <Lock className="w-8 h-8 text-[#E50914]" />
+          <Lock className="w-8 h-8 text-[#EF4444]" />
           <span className="text-white text-xs font-bold">🔒 Controls Locked</span>
           <span className="text-[9px] text-gray-400">Tap lock icon to unlock</span>
         </div>
@@ -1637,7 +1834,7 @@ function CustomPlayer({
 
       {/* Pulsing 2x Playback Speed Indicator Badge */}
       {longPressActive && (
-        <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-[#E50914] text-white text-[9px] font-extrabold px-3 py-1.5 rounded-full shadow-lg border border-[#E50914]/25 tracking-widest uppercase z-30 animate-pulse">
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-[#EF4444] text-white text-[9px] font-extrabold px-3 py-1.5 rounded-full shadow-lg border border-[#EF4444]/25 tracking-widest uppercase z-30 animate-pulse">
           ⚡ 2X SPEED HOLDING
         </div>
       )}
@@ -1654,7 +1851,7 @@ function CustomPlayer({
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/80 backdrop-blur-md border border-white/10 rounded-2xl p-4 flex flex-col items-center gap-1 shadow-2xl z-30 pointer-events-none">
           <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider">Seek to</span>
           <span className="text-white text-lg font-mono font-bold text-center">{formatTime(scrubPreviewTime)}</span>
-          <span className="text-[9px] text-[#E50914] font-medium mt-1">
+          <span className="text-[9px] text-[#EF4444] font-medium mt-1">
             {scrubPreviewTime > currentTime ? `▶ Forward ${formatTime(scrubPreviewTime - currentTime)}` : `◀ Rewind ${formatTime(currentTime - scrubPreviewTime)}`}
           </span>
         </div>
@@ -1680,7 +1877,7 @@ function CustomPlayer({
           <span className="text-white">🔊</span>
           <div className="w-1 h-20 bg-white/20 rounded-full overflow-hidden relative">
             <div 
-              className="absolute bottom-0 left-0 right-0 bg-[#E50914] transition-all duration-75"
+              className="absolute bottom-0 left-0 right-0 bg-[#EF4444] transition-all duration-75"
               style={{ height: `${volume * 100}%` }}
             />
           </div>
@@ -1703,7 +1900,7 @@ function CustomPlayer({
       )}
 
       {/* Mobile Touch Lock Button */}
-      {(showControls || isLocked) && (
+      {showControls && (
         <button 
           onClick={(e) => {
             e.stopPropagation();
@@ -1712,7 +1909,7 @@ function CustomPlayer({
           className="absolute top-6 right-6 w-11 h-11 bg-black/50 border border-white/5 hover:bg-black/70 hover:border-white/10 backdrop-blur-md rounded-xl flex items-center justify-center text-white transition-all z-30 cursor-pointer shadow-lg"
           title={isLocked ? "Unlock Screen" : "Lock Screen"}
         >
-          {isLocked ? <Lock size={16} className="text-[#E50914]" /> : <Unlock size={16} />}
+          {isLocked ? <Lock size={16} className="text-[#EF4444]" /> : <Unlock size={16} />}
         </button>
       )}
 
@@ -1720,7 +1917,7 @@ function CustomPlayer({
       {showNextCountdown && (
         <div className="absolute bottom-20 right-6 bg-black/90 backdrop-blur-xl border border-white/10 rounded-2xl p-4 flex flex-col gap-3.5 shadow-2xl z-30 w-72 animate-slide-right">
           <div className="border-b border-white/5 pb-2 flex justify-between items-center">
-            <span className="text-[10px] text-[#E50914] font-extrabold tracking-widest uppercase">Up Next</span>
+            <span className="text-[10px] text-[#EF4444] font-extrabold tracking-widest uppercase">Up Next</span>
             <span className="text-[10px] text-gray-500 font-mono font-bold">{countdownSeconds}s</span>
           </div>
           <div className="flex items-center gap-3">
@@ -1742,7 +1939,7 @@ function CustomPlayer({
                 setShowNextCountdown(false);
                 if (onEnded) onEnded();
               }}
-              className="flex-1 h-10 rounded-xl bg-[#E50914] text-white hover:bg-[#B91C1C] transition-colors flex items-center justify-center gap-1 cursor-pointer"
+              className="flex-1 h-10 rounded-xl bg-[#EF4444] text-white hover:bg-[#B91C1C] transition-colors flex items-center justify-center gap-1 cursor-pointer"
             >
               <Play size={10} className="fill-current" />
               <span>Play Now</span>
@@ -1767,7 +1964,7 @@ function CustomPlayer({
             e.stopPropagation();
             handlePlayPause();
           }}
-          className="absolute w-16 h-16 rounded-full bg-black/60 hover:bg-[#E50914]/90 text-white flex items-center justify-center cursor-pointer shadow-2xl transition-all duration-300 z-30 transform hover:scale-110 active:scale-95"
+          className="absolute w-16 h-16 rounded-full bg-black/60 hover:bg-[#EF4444]/90 text-white flex items-center justify-center cursor-pointer shadow-2xl transition-all duration-300 z-30 transform hover:scale-110 active:scale-95"
         >
           <Play size={26} className="fill-current ml-0.5" />
         </div>
@@ -1780,7 +1977,6 @@ function CustomPlayer({
         onDurationChange={handleLoadedMetadata}
         onEnded={handleVideoEnded}
         onCanPlay={() => setIsVideoLoaded(true)}
-        onError={handleVideoError}
         className="w-full h-full object-contain z-10 transition-all duration-200"
         style={{ 
           objectFit: fitMode === "cover" ? "cover" : fitMode === "fill" ? "fill" : "contain"
@@ -1815,7 +2011,7 @@ function CustomPlayer({
                   e.stopPropagation();
                   skipAd();
                 }}
-                className="pointer-events-auto bg-[#E50914] text-white font-extrabold text-[10px] uppercase tracking-wider px-4 py-2.5 rounded-xl border border-[#E50914]/25 shadow-2xl cursor-pointer hover:bg-[#B91C1C] active:scale-95 transition-all flex items-center gap-1"
+                className="pointer-events-auto bg-[#EF4444] text-white font-extrabold text-[10px] uppercase tracking-wider px-4 py-2.5 rounded-xl border border-[#EF4444]/25 shadow-2xl cursor-pointer hover:bg-[#B91C1C] active:scale-95 transition-all flex items-center gap-1"
               >
                 <span>Skip Ad</span>
                 <ArrowRight size={12} />
@@ -1852,7 +2048,7 @@ function CustomPlayer({
               className="absolute bottom-6 bg-black/90 backdrop-blur-md border border-white/10 rounded-xl px-2.5 py-1.5 flex flex-col items-center gap-0.5 shadow-2xl pointer-events-none z-40 transform -translate-x-1/2 text-[9px] font-bold"
               style={{ left: `${hoverXPercent}%` }}
             >
-              {hoverChapterName && <span className="text-[#E50914] uppercase tracking-wider block text-[7px]">{hoverChapterName}</span>}
+              {hoverChapterName && <span className="text-[#EF4444] uppercase tracking-wider block text-[7px]">{hoverChapterName}</span>}
               <span className="text-white font-mono">{formatTime(hoverTime)}</span>
             </div>
           )}
@@ -1880,7 +2076,7 @@ function CustomPlayer({
 
             {/* Played timeline */}
             <div 
-              className="absolute top-0 bottom-0 left-0 bg-[#E50914] pointer-events-none"
+              className="absolute top-0 bottom-0 left-0 bg-[#EF4444] pointer-events-none"
               style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
             />
 
@@ -1896,7 +2092,7 @@ function CustomPlayer({
 
           {/* Interactive thumb marker */}
           <div 
-            className="absolute w-3.5 h-3.5 rounded-full bg-[#E50914] border border-white/20 pointer-events-none top-1/2 -translate-y-1/2 -ml-1.5 opacity-0 group-hover/progress:opacity-100 transition-opacity"
+            className="absolute w-3.5 h-3.5 rounded-full bg-[#EF4444] border border-white/20 pointer-events-none top-1/2 -translate-y-1/2 -ml-1.5 opacity-0 group-hover/progress:opacity-100 transition-opacity"
             style={{ left: `${(currentTime / (duration || 1)) * 100}%` }}
           />
         </div>
@@ -1908,7 +2104,7 @@ function CustomPlayer({
             {/* Play/Pause Button (touch size: 48px) */}
             <button 
               onClick={handlePlayPause} 
-              className="w-12 h-12 flex items-center justify-center hover:text-[#E50914] transition-colors cursor-pointer text-lg"
+              className="w-12 h-12 flex items-center justify-center hover:text-[#EF4444] transition-colors cursor-pointer text-lg"
               title="Play/Pause"
             >
               {isPlaying ? <Pause size={18} /> : <Play size={18} className="fill-current ml-0.5" />}
@@ -1917,7 +2113,7 @@ function CustomPlayer({
             {/* Skip 5s Rewind */}
             <button 
               onClick={() => handleSeekChange(Math.max(0, currentTime - 5))}
-              className="w-11 h-11 flex items-center justify-center hover:text-[#E50914] transition-colors cursor-pointer text-gray-400"
+              className="w-11 h-11 flex items-center justify-center hover:text-[#EF4444] transition-colors cursor-pointer text-gray-400"
               title="Rewind 5s"
             >
               <RotateCcw size={16} />
@@ -1926,7 +2122,7 @@ function CustomPlayer({
             {/* Skip 5s Forward */}
             <button 
               onClick={() => handleSeekChange(Math.min(duration, currentTime + 5))}
-              className="w-11 h-11 flex items-center justify-center hover:text-[#E50914] transition-colors cursor-pointer text-gray-400"
+              className="w-11 h-11 flex items-center justify-center hover:text-[#EF4444] transition-colors cursor-pointer text-gray-400"
               title="Forward 5s"
             >
               <RotateCw size={16} />
@@ -1936,7 +2132,7 @@ function CustomPlayer({
             <div className="flex items-center group/volume ml-1.5">
               <button 
                 onClick={toggleMute} 
-                className="w-12 h-12 flex items-center justify-center hover:text-[#E50914] transition-colors cursor-pointer"
+                className="w-12 h-12 flex items-center justify-center hover:text-[#EF4444] transition-colors cursor-pointer"
                 title="Mute Toggle"
               >
                 {isMuted ? <VolumeX size={18} /> : (volume > 0.5 ? <Volume2 size={18} /> : <Volume1 size={18} />)}
@@ -1949,7 +2145,7 @@ function CustomPlayer({
                   step="0.05"
                   value={isMuted ? 0 : volume}
                   onChange={handleVolumeChange}
-                  className="w-16 accent-[#E50914] h-1 bg-white/20 rounded-lg cursor-pointer"
+                  className="w-16 accent-[#EF4444] h-1 bg-white/20 rounded-lg cursor-pointer"
                 />
               </div>
             </div>
@@ -1965,7 +2161,7 @@ function CustomPlayer({
             {/* PiP Mini Player toggle */}
             <button 
               onClick={togglePiP}
-              className="w-12 h-12 flex items-center justify-center hover:text-[#E50914] transition-colors cursor-pointer text-gray-400"
+              className="w-12 h-12 flex items-center justify-center hover:text-[#EF4444] transition-colors cursor-pointer text-gray-400"
               title="Picture-in-Picture Mini Player"
             >
               <Tv size={16} />
@@ -1980,7 +2176,7 @@ function CustomPlayer({
                   setActiveMenu("main");
                 }}
                 className={`w-12 h-12 flex items-center justify-center transition-colors cursor-pointer ${
-                  isSettingsOpen ? "text-[#E50914]" : "text-gray-400 hover:text-white"
+                  isSettingsOpen ? "text-[#EF4444]" : "text-gray-400 hover:text-white"
                 }`}
                 title="Playback Settings"
               >
@@ -1995,7 +2191,7 @@ function CustomPlayer({
                   {activeMenu === "main" && (
                     <div className="flex flex-col gap-0.5">
                       <div className="px-3 pb-2 border-b border-white/5 flex items-center justify-between">
-                        <span className="text-[#E50914] font-extrabold uppercase tracking-widest text-[8px]">Playback Settings</span>
+                        <span className="text-[#EF4444] font-extrabold uppercase tracking-widest text-[8px]">Playback Settings</span>
                       </div>
 
                       <button 
@@ -2055,7 +2251,7 @@ function CustomPlayer({
                             setIsSettingsOpen(false);
                           }}
                           className={`w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-white/5 text-left transition-colors ${
-                            res.url === url ? "text-[#E50914] font-extrabold" : "text-gray-300"
+                            res.url === url ? "text-[#EF4444] font-extrabold" : "text-gray-300"
                           }`}
                         >
                           <span>{res.resolution}</span>
@@ -2078,7 +2274,7 @@ function CustomPlayer({
                           setIsSettingsOpen(false);
                         }}
                         className={`w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-white/5 text-left transition-colors ${
-                          !activeSubtitle ? "text-[#E50914] font-extrabold" : "text-gray-300"
+                          !activeSubtitle ? "text-[#EF4444] font-extrabold" : "text-gray-300"
                         }`}
                       >
                         <span>Off</span>
@@ -2092,7 +2288,7 @@ function CustomPlayer({
                             setIsSettingsOpen(false);
                           }}
                           className={`w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-white/5 text-left transition-colors ${
-                            cap.url === activeSubtitle ? "text-[#E50914] font-extrabold" : "text-gray-300"
+                            cap.url === activeSubtitle ? "text-[#EF4444] font-extrabold" : "text-gray-300"
                           }`}
                         >
                           <span>{cap.language}</span>
@@ -2117,7 +2313,7 @@ function CustomPlayer({
                             setIsSettingsOpen(false);
                           }}
                           className={`w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-white/5 text-left transition-colors ${
-                            playbackSpeed === spd ? "text-[#E50914] font-extrabold" : "text-gray-300"
+                            playbackSpeed === spd ? "text-[#EF4444] font-extrabold" : "text-gray-300"
                           }`}
                         >
                           <span>{spd === 1.0 ? "Normal (1x)" : `${spd}x`}</span>
@@ -2132,7 +2328,7 @@ function CustomPlayer({
                     <div className="flex flex-col gap-0.5">
                       <div className="px-3 pb-2 border-b border-white/5 flex items-center gap-2">
                         <button onClick={() => setActiveMenu("main")} className="hover:text-white text-gray-400 text-xs">←</button>
-                        <span className="text-[#E50914] font-extrabold uppercase tracking-widest text-[8px]">Sleep Timer</span>
+                        <span className="text-[#EF4444] font-extrabold uppercase tracking-widest text-[8px]">Sleep Timer</span>
                       </div>
                       {[
                         { label: "Off", min: null },
@@ -2149,7 +2345,7 @@ function CustomPlayer({
                             if (timer.min) triggerHud("⏰", `Sleep Timer Set: ${timer.min}m`);
                           }}
                           className={`w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-white/5 text-left transition-colors ${
-                            sleepTimerMinutes === timer.min ? "text-[#E50914] font-extrabold" : "text-gray-300"
+                            sleepTimerMinutes === timer.min ? "text-[#EF4444] font-extrabold" : "text-gray-300"
                           }`}
                         >
                           <span>{timer.label}</span>
@@ -2165,7 +2361,7 @@ function CustomPlayer({
             {/* Fullscreen Button */}
             <button 
               onClick={toggleFullscreen} 
-              className="w-12 h-12 flex items-center justify-center hover:text-[#E50914] transition-colors cursor-pointer text-gray-400"
+              className="w-12 h-12 flex items-center justify-center hover:text-[#EF4444] transition-colors cursor-pointer text-gray-400"
               title="Toggle Fullscreen"
             >
               <Maximize2 size={16} />

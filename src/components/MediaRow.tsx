@@ -12,7 +12,7 @@ interface MediaRowProps {
   title: string;
   fetchFn: () => Promise<PaginatedResponse<MediaItem>>;
   mediaType: "movie" | "tv";
-  layout?: "poster" | "landscape" | "grid";
+  layout?: "poster" | "landscape" | "grid" | "top10";
 }
 
 export default function MediaRow({ title, fetchFn, mediaType, layout = "poster" }: MediaRowProps) {
@@ -70,12 +70,12 @@ export default function MediaRow({ title, fetchFn, mediaType, layout = "poster" 
     >
       {/* Title */}
       <div className="flex items-center justify-between pr-4 md:pr-12 mb-3">
-        <h2 className="text-lg md:text-xl font-semibold text-white flex items-center tracking-wide border-l-4 border-[#E50914] pl-3">
+        <h2 className="text-lg md:text-xl font-extrabold text-[#F8FAFC] flex items-center tracking-wide border-l-[3px] border-[#EF4444] pl-3">
           {title}
         </h2>
         <Link 
           href={mediaType === "movie" ? "/discover?type=movie" : "/discover?type=tv"} 
-          className="flex items-center gap-1 text-xs text-gray-400 hover:text-[#E50914] transition-colors font-medium group/viewall"
+          className="flex items-center gap-1 text-xs text-slate-400 hover:text-[#EF4444] transition-colors font-semibold group/viewall"
         >
           <span>View All</span>
           <ChevronRight size={14} className="group-hover/viewall:translate-x-0.5 transition-transform" />
@@ -88,7 +88,7 @@ export default function MediaRow({ title, fetchFn, mediaType, layout = "poster" 
         {layout !== "grid" && (
           <button
             onClick={() => handleScroll("left")}
-            className="absolute left-0 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 hover:bg-white/15 border border-white/10 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 backdrop-blur-sm z-30"
+            className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/85 border border-white/5 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all duration-300 hover:scale-105 active:scale-95 backdrop-blur-md z-30"
             title="Scroll Left"
           >
             <ChevronLeft size={20} />
@@ -103,17 +103,60 @@ export default function MediaRow({ title, fetchFn, mediaType, layout = "poster" 
             ))}
           </div>
         ) : layout === "grid" ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6 pr-4 md:pr-12">
+          <motion.div 
+            variants={containerVariants}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, margin: "-40px" }}
+            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6 pr-4 md:pr-12"
+          >
             {items.map((item) => (
-              <MovieCard key={item.id} item={item} mediaType={mediaType} />
+              <motion.div key={item.id} variants={itemVariants}>
+                <MovieCard item={item} mediaType={mediaType} />
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
+        ) : layout === "top10" ? (
+          <motion.div
+            ref={rowRef}
+            variants={containerVariants}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, margin: "-40px" }}
+            className="flex gap-8 overflow-x-auto pb-4 scrollbar-hide snap-x scroll-smooth pr-4 md:pr-12"
+          >
+            {items.slice(0, 10).map((item, idx) => (
+              <motion.div 
+                key={item.id} 
+                variants={itemVariants}
+                className="flex items-end shrink-0 snap-start relative pl-16 w-52 md:w-64 h-56 md:h-72"
+              >
+                {/* Netflix-style Large Number overlay */}
+                <div 
+                  className="absolute left-0 bottom-[-16px] text-[150px] md:text-[200px] font-black leading-none select-none text-transparent stroke-white"
+                  style={{
+                    WebkitTextStroke: "4px rgba(255, 255, 255, 0.4)",
+                    textShadow: "0 0 20px rgba(0,0,0,0.8)",
+                    zIndex: 10
+                  }}
+                >
+                  {idx + 1}
+                </div>
+                
+                {/* Standard Movie Card container */}
+                <div className="relative z-20 w-full h-full">
+                  <MovieCard item={item} mediaType={mediaType} />
+                </div>
+              </motion.div>
+            ))}
+          </motion.div>
         ) : (
           <motion.div
             ref={rowRef}
             variants={containerVariants}
             initial="hidden"
-            animate="show"
+            whileInView="show"
+            viewport={{ once: true, margin: "-40px" }}
             className="flex gap-6 overflow-x-auto pb-4 scrollbar-hide snap-x scroll-smooth pr-4 md:pr-12"
           >
             {items.map((item) => (
@@ -132,7 +175,7 @@ export default function MediaRow({ title, fetchFn, mediaType, layout = "poster" 
         {layout !== "grid" && (
           <button
             onClick={() => handleScroll("right")}
-            className="absolute right-4 md:right-12 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 hover:bg-white/15 border border-white/10 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 backdrop-blur-sm z-30"
+            className="absolute right-6 md:right-14 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/85 border border-white/5 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all duration-300 hover:scale-105 active:scale-95 backdrop-blur-md z-30"
             title="Scroll Right"
           >
             <ChevronRight size={20} />

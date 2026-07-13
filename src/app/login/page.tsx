@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { LogIn, UserPlus } from "lucide-react";
+import { motion } from "framer-motion";
+import { FadeUp } from "@/components/AnimatedComponents";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -11,6 +13,14 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    document.title = isLogin ? "Sign In — Plexoria" : "Create Account — Plexoria";
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) {
+      metaDesc.setAttribute("content", "Access your personal Plexoria account library to resume playing, save watchlist movies, and manage catalog settings.");
+    }
+  }, [isLogin]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,46 +56,50 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center pt-20 px-4 select-none relative z-10">
-      <div className="max-w-md w-full liquid-glass p-8 border border-white/10 shadow-2xl space-y-6">
+    <div className="min-h-screen bg-black flex items-center justify-center pt-28 pb-20 px-4 select-none relative z-10 text-slate-300">
+      <FadeUp className="max-w-md w-full liquid-glass p-8 border border-white/5 shadow-2xl space-y-6">
         <div className="space-y-1.5 text-center">
-          <h2 className="text-2xl md:text-3xl font-black text-white" style={{ textShadow: "0 0 30px rgba(239,68,68,0.2)" }}>
+          <h2 className="text-2xl md:text-3xl font-black text-white" style={{ textShadow: "0 0 35px rgba(239,68,68,0.15)" }}>
             {isLogin ? "Welcome Back" : "Create Account"}
           </h2>
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-slate-400 font-semibold">
             {isLogin ? "Sign in to resume catalog tracking" : "Register a new profile for streaming logs"}
           </p>
         </div>
         
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-xl text-xs font-semibold">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-xl text-xs font-semibold"
+          >
             {error}
-          </div>
+          </motion.div>
         )}
 
         <form onSubmit={handleAuth} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
               Email Address
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-black/60 border border-white/10 text-xs font-medium text-white rounded-xl p-3 focus:outline-none focus:border-[#EF4444]"
+              className="w-full bg-black/55 border border-white/5 text-xs font-semibold text-white rounded-xl p-3 focus:outline-none focus:border-[#EF4444] focus:ring-1 focus:ring-[#EF4444]/30 placeholder-slate-600 transition-all"
               placeholder="name@domain.com"
               required
             />
           </div>
           <div className="space-y-1.5">
-            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
               Password
             </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-black/60 border border-white/10 text-xs font-medium text-white rounded-xl p-3 focus:outline-none focus:border-[#EF4444]"
+              className="w-full bg-black/55 border border-white/5 text-xs font-semibold text-white rounded-xl p-3 focus:outline-none focus:border-[#EF4444] focus:ring-1 focus:ring-[#EF4444]/30 placeholder-slate-600 transition-all"
               placeholder="••••••••"
               required
               minLength={6}
@@ -95,23 +109,23 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-[#EF4444] to-[#B91C1C] text-white font-bold py-3 rounded-xl hover:shadow-[0_0_15px_rgba(239,68,68,0.35)] transition-all disabled:opacity-50 mt-2"
+            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-[#EF4444] to-[#B91C1C] text-white font-extrabold py-3 rounded-xl hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] transition-all disabled:opacity-50 mt-2 active:scale-98"
           >
             {isLogin ? <LogIn size={16} /> : <UserPlus size={16} />}
             <span>{loading ? "Please wait..." : isLogin ? "Sign In" : "Sign Up"}</span>
           </button>
         </form>
 
-        <div className="text-center text-xs text-gray-400">
+        <div className="text-center text-xs text-slate-400 font-semibold">
           {isLogin ? "Don't have an account? " : "Already have an account? "}
           <button
             onClick={() => setIsLogin(!isLogin)}
-            className="text-white hover:text-red-400 hover:underline font-bold transition-colors"
+            className="text-[#EF4444] hover:text-red-400 hover:underline font-extrabold transition-colors ml-0.5"
           >
             {isLogin ? "Sign up" : "Sign in"}
           </button>
         </div>
-      </div>
+      </FadeUp>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Film } from "lucide-react";
+import { motion } from "framer-motion";
 
 export default function NotFound() {
   const [isRedirecting, setIsRedirecting] = useState(true);
@@ -32,30 +33,70 @@ export default function NotFound() {
       {/* Glow Effect */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-red-500/5 rounded-full blur-[120px] pointer-events-none z-0"></div>
 
-      <div className="relative z-10 max-w-md space-y-6">
-        <div className="flex items-center justify-center gap-2 mb-2">
+      <motion.div 
+        variants={{
+          hidden: { opacity: 0 },
+          show: {
+            opacity: 1,
+            transition: {
+              staggerChildren: 0.1,
+              delayChildren: 0.1,
+            }
+          }
+        }}
+        initial="hidden"
+        animate="show"
+        className="relative z-10 max-w-md space-y-6"
+      >
+        <motion.div 
+          variants={{
+            hidden: { opacity: 0, scale: 0.8 },
+            show: { opacity: 1, scale: 1, transition: { type: "spring", stiffness: 350, damping: 22 } }
+          }}
+          className="flex items-center justify-center gap-2 mb-2"
+        >
           <Film size={28} className="text-[#EF4444] animate-pulse" />
           <span className="text-xl font-black text-white tracking-wider uppercase">Plexoria</span>
-        </div>
+        </motion.div>
 
-        <h1 className="text-8xl font-black text-white leading-none tracking-tighter">404</h1>
+        <motion.h1 
+          variants={{
+            hidden: { opacity: 0, y: 20 },
+            show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }
+          }}
+          className="text-8xl font-black text-white leading-none tracking-tighter"
+        >
+          404
+        </motion.h1>
         
-        <div className="space-y-2">
+        <motion.div 
+          variants={{
+            hidden: { opacity: 0, y: 20 },
+            show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }
+          }}
+          className="space-y-2"
+        >
           <h2 className="text-lg font-bold text-white uppercase tracking-wide">Page Not Found</h2>
           <p className="text-xs text-gray-400 leading-relaxed font-medium">
             The page you are looking for does not exist, has been moved, or is temporarily unavailable.
           </p>
-        </div>
+        </motion.div>
 
-        <div className="pt-4">
+        <motion.div 
+          variants={{
+            hidden: { opacity: 0, y: 15 },
+            show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }
+          }}
+          className="pt-4"
+        >
           <Link
             href="/"
             className="inline-flex items-center justify-center px-6 py-3 rounded-xl bg-gradient-to-r from-[#EF4444] to-[#D32F2F] text-xs font-bold text-white shadow-lg shadow-red-500/15 hover:shadow-red-500/25 transition-all hover:scale-105 active:scale-98 duration-200"
           >
             Back to Home
           </Link>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }

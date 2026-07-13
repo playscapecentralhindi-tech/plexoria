@@ -6,7 +6,9 @@ import { useSearchParams } from "next/navigation";
 import { tmdb } from "@/lib/tmdb";
 import { Search } from "lucide-react";
 import MovieCard, { SkeletonCard } from "@/components/MovieCard";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { dropdownVariants } from "@/lib/animations";
+import { FadeUp } from "@/components/AnimatedComponents";
 
 // Hook for debouncing input
 function useDebounce<T>(value: T, delay: number): T {
@@ -122,6 +124,19 @@ function SearchContent() {
     setQuery(urlQuery);
   }, [urlQuery]);
 
+  // Sync page tab title dynamically with active queries
+  useEffect(() => {
+    if (debouncedQuery.trim()) {
+      document.title = `Search: "${debouncedQuery}" — Plexoria`;
+    } else {
+      document.title = "Search Movies & TV Shows — Plexoria";
+    }
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) {
+      metaDesc.setAttribute("content", `Search results for "${debouncedQuery}" on Plexoria's free online streaming database.`);
+    }
+  }, [debouncedQuery]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
@@ -214,16 +229,16 @@ function SearchContent() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 select-none relative z-10">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pt-28 select-none relative z-10 bg-black min-h-screen text-slate-300">
       
       {/* Search Input Box */}
       <div ref={searchContainerRef} className="relative max-w-2xl mx-auto mb-16">
         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-          <Search className="h-5 w-5 text-gray-400" />
+          <Search className="h-5 w-5 text-slate-400" />
         </div>
         <input
           type="text"
-          className="block w-full pl-12 pr-4 py-3.5 bg-[#12121A] border border-white/10 focus:border-[#EF4444]/50 rounded-xl text-base text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#EF4444]/30 transition-all shadow-inner font-medium"
+          className="block w-full pl-12 pr-4 py-3.5 bg-[#0A0A0F] border border-white/5 focus:border-[#EF4444]/50 rounded-xl text-base text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-[#EF4444]/30 transition-all shadow-inner font-medium"
           placeholder="Search for movies, TV shows..."
           value={query}
           onChange={(e) => {
@@ -234,26 +249,34 @@ function SearchContent() {
         />
 
         {/* Real-time Autocomplete suggestions dropdown overlay */}
-        {showSuggestions && suggestions.length > 0 && (
-          <div className="absolute left-0 right-0 top-full mt-1.5 bg-[#111116]/95 border border-white/10 rounded-xl overflow-hidden shadow-2xl z-50 flex flex-col divide-y divide-white/5 backdrop-blur-md">
-            {suggestions.map((item) => {
-              const displayTitle = item.title || item.name;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setQuery(displayTitle);
-                    setShowSuggestions(false);
-                  }}
-                  className="w-full flex items-center px-4 py-3 text-left text-xs font-semibold text-gray-200 hover:bg-white/5 hover:text-white transition-colors gap-3"
-                >
-                  <Search className="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                  <span className="truncate">{displayTitle}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <AnimatePresence>
+          {showSuggestions && suggestions.length > 0 && (
+            <motion.div 
+              variants={dropdownVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              className="absolute left-0 right-0 top-full mt-1.5 bg-black/90 border border-white/5 rounded-xl overflow-hidden shadow-2xl z-50 flex flex-col divide-y divide-white/5 backdrop-blur-md"
+            >
+              {suggestions.map((item) => {
+                const displayTitle = item.title || item.name;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setQuery(displayTitle);
+                      setShowSuggestions(false);
+                    }}
+                    className="w-full flex items-center px-4 py-3 text-left text-xs font-semibold text-gray-200 hover:bg-white/5 hover:text-white transition-colors gap-3"
+                  >
+                    <Search className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                    <span className="truncate">{displayTitle}</span>
+                  </button>
+                );
+              })}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Loading states grid */}
@@ -299,11 +322,11 @@ function SearchContent() {
 
       {/* Empty states */}
       {results.length === 0 && debouncedQuery.length > 1 && !isLoading && (
-        <div className="flex flex-col gap-6 max-w-md mx-auto mt-16">
+        <FadeUp className="flex flex-col gap-6 max-w-md mx-auto mt-16 w-full">
           {suggestion && (
-            <div className="text-center p-6 bg-[#EF4444]/5 border border-[#EF4444]/20 rounded-2xl">
+            <div className="text-center p-6 bg-[#EF4444]/5 border border-[#EF4444]/15 rounded-2xl">
               <span className="text-lg block mb-1">💡</span>
-              <p className="text-xs text-gray-300 font-medium">
+              <p className="text-xs text-slate-300 font-semibold">
                 Did you mean:{" "}
                 <button
                   onClick={() => {
@@ -317,12 +340,12 @@ function SearchContent() {
               </p>
             </div>
           )}
-          <div className="text-center text-gray-400 p-8 bg-white/2 border border-white/5 rounded-2xl">
+          <div className="text-center text-slate-400 p-8 bg-[#0A0A0F]/50 border border-white/5 rounded-2xl">
             <span className="text-3xl block mb-2">🔍</span>
-            <p className="font-semibold text-sm">No results found for "{debouncedQuery}"</p>
-            <p className="text-xs text-gray-500 mt-1">Double check spellings or try looking up another title.</p>
+            <p className="font-semibold text-sm text-white">No results found for "{debouncedQuery}"</p>
+            <p className="text-xs text-slate-500 mt-1 font-semibold">Double check spellings or try looking up another title.</p>
           </div>
-        </div>
+        </FadeUp>
       )}
     </div>
   );

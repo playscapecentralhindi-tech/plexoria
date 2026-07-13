@@ -9,6 +9,7 @@ import { Star, Tv, Sparkles, Share2, Heart, Bookmark, Play, Plus, ChevronRight }
 import VideoPlayer from "@/components/VideoPlayer";
 import MovieCard from "./MovieCard";
 import { useSearchParams } from "next/navigation";
+import { FadeIn, FadeUp, StaggerContainer, StaggerItem } from "@/components/AnimatedComponents";
 
 export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; id: string }) {
   const searchParams = useSearchParams();
@@ -47,14 +48,40 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
     queryFn: () => tmdb.getDetails(mediaType, id),
   });
 
-  // Set document title dynamically
+  // Read watchlist and favorites on mount
+  useEffect(() => {
+    try {
+      const storedList = localStorage.getItem("plexoria_watchlist");
+      if (storedList) {
+        const watchlistMap = JSON.parse(storedList);
+        setIsAddedToList(!!watchlistMap[`${id}_${mediaType}`]);
+      }
+      
+      const storedFavs = localStorage.getItem("plexoria_favorites");
+      if (storedFavs) {
+        const favsMap = JSON.parse(storedFavs);
+        setIsFavorited(!!favsMap[`${id}_${mediaType}`]);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [id, mediaType]);
+
   useEffect(() => {
     if (media) {
-      const titleText = media.title || media.name || "Watch Free";
-      const yearText = (media.release_date || media.first_air_date || "").substring(0, 4);
-      document.title = `${titleText} ${yearText ? `(${yearText})` : ""} — Watch Free on Plexoria`;
+      const year = (media.release_date || media.first_air_date || "").substring(0, 4);
+      const titleText = media.title || media.name || "Media Details";
+      document.title = year ? `${titleText} (${year}) — Plexoria` : `${titleText} — Plexoria`;
+      
+      const metaDesc = document.querySelector('meta[name="description"]');
+      if (metaDesc) {
+        const snippet = media.overview ? media.overview.substring(0, 150) + "..." : "";
+        metaDesc.setAttribute("content", `Stream ${titleText} (${year}) free online on Plexoria: ${snippet}`);
+      }
     }
   }, [media]);
+
+
 
   const { data: seasonDetails, isLoading: isSeasonLoading } = useQuery({
     queryKey: ["season", id, activeSeason],
@@ -64,17 +91,17 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0D0D0D]">
-        <div className="w-12 h-12 rounded-full border-4 border-[#E50914]/20 border-t-[#E50914] animate-spin"></div>
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <div className="w-12 h-12 rounded-full border-4 border-[#EF4444]/25 border-t-[#EF4444] animate-spin"></div>
       </div>
     );
   }
 
   if (error || !media) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center text-[#E50914] bg-[#0D0D0D] gap-2">
+      <div className="min-h-screen flex flex-col items-center justify-center text-[#EF4444] bg-black gap-2">
         <span>Failed to load details for this title.</span>
-        <Link href="/" className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-xs">Back to Home</Link>
+        <Link href="/" className="px-4 py-2 bg-white/5 border border-white/5 rounded-xl text-white text-xs hover:bg-white/10 transition-colors">Back to Home</Link>
       </div>
     );
   }
@@ -103,8 +130,64 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
     ? `https://image.tmdb.org/t/p/w1280${media.backdrop_path}`
     : "";
 
+  const handleToggleWatchlist = () => {
+    if (!media) return;
+    try {
+      const stored = localStorage.getItem("plexoria_watchlist") || "{}";
+      const watchlistMap = JSON.parse(stored);
+      const key = `${id}_${mediaType}`;
+      if (watchlistMap[key]) {
+        delete watchlistMap[key];
+        setIsAddedToList(false);
+      } else {
+        watchlistMap[key] = {
+          id: media.id,
+          title: media.title || media.name,
+          name: media.title || media.name,
+          poster_path: media.poster_path,
+          backdrop_path: media.backdrop_path,
+          media_type: mediaType,
+          vote_average: media.vote_average,
+          addedAt: Date.now()
+        };
+        setIsAddedToList(true);
+      }
+      localStorage.setItem("plexoria_watchlist", JSON.stringify(watchlistMap));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleToggleFavorite = () => {
+    if (!media) return;
+    try {
+      const stored = localStorage.getItem("plexoria_favorites") || "{}";
+      const favsMap = JSON.parse(stored);
+      const key = `${id}_${mediaType}`;
+      if (favsMap[key]) {
+        delete favsMap[key];
+        setIsFavorited(false);
+      } else {
+        favsMap[key] = {
+          id: media.id,
+          title: media.title || media.name,
+          name: media.title || media.name,
+          poster_path: media.poster_path,
+          backdrop_path: media.backdrop_path,
+          media_type: mediaType,
+          vote_average: media.vote_average,
+          addedAt: Date.now()
+        };
+        setIsFavorited(true);
+      }
+      localStorage.setItem("plexoria_favorites", JSON.stringify(favsMap));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   return (
-    <div className="min-h-screen pb-20 bg-[#0A0A0A] text-gray-300 relative select-none">
+    <div className="min-h-screen pb-20 bg-black text-slate-300 relative select-none">
       
       {/* Top Section: Video Player container (Full Width) */}
       {mediaType !== "person" && (
@@ -135,21 +218,21 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col gap-6">
         
         {/* Title, rating, genres & action row */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-[#111116] border border-white/5 p-6 rounded-2xl">
+        <FadeUp className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-[#0A0A0F] border border-white/5 p-6 rounded-2xl w-full">
           <div className="space-y-3 flex-1">
             <div className="flex flex-wrap items-baseline gap-3.5">
               <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
                 {media.title || media.name}
               </h1>
               {media.vote_average > 0 && (
-                <span className="flex items-center gap-1 text-xs text-[#FBBF24] font-extrabold">
+                <span className="flex items-center gap-1 text-xs text-[#F59E0B] font-extrabold">
                   ★ {media.vote_average.toFixed(1)}
                 </span>
               )}
             </div>
 
             {media.tagline && (
-              <p className="text-xs text-gray-400 italic">
+              <p className="text-xs text-slate-400 italic">
                 "{media.tagline}"
               </p>
             )}
@@ -157,17 +240,17 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
             {/* Metachips & Genres */}
             <div className="flex flex-wrap items-center gap-2.5 text-xs font-semibold">
               {year && (
-                <span className="px-2.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-gray-300">{year}</span>
+                <span className="px-2.5 py-0.5 rounded-md bg-white/5 border border-white/5 text-slate-300">{year}</span>
               )}
               {durationText && (
-                <span className="px-2.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-gray-300">{durationText}</span>
+                <span className="px-2.5 py-0.5 rounded-md bg-white/5 border border-white/5 text-slate-300">{durationText}</span>
               )}
-              <span className="px-2.5 py-0.5 rounded-md bg-[#E50914]/15 border border-[#E50914]/25 text-[#E50914] uppercase text-[9px] font-black tracking-wider">
+              <span className="px-2.5 py-0.5 rounded-md bg-[#EF4444]/15 border border-[#EF4444]/25 text-[#EF4444] uppercase text-[9px] font-black tracking-wider">
                 {mediaType}
               </span>
               <div className="flex flex-wrap gap-1.5 ml-1">
                 {media.genres?.map((g: any) => (
-                  <span key={g.id} className="text-[10px] px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-gray-400">
+                  <span key={g.id} className="text-[10px] px-2.5 py-0.5 rounded-full bg-white/5 border border-white/5 text-slate-400">
                     {g.name}
                   </span>
                 ))}
@@ -178,7 +261,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
             {mediaType === "tv" && (
-              <div className="flex items-center gap-1.5 border border-white/10 rounded-xl bg-white/5 p-1">
+              <div className="flex items-center gap-1.5 border border-white/5 rounded-xl bg-white/5 p-1">
                 <button
                   disabled={activeEpisode === 1}
                   onClick={() => setActiveEpisode(prev => Math.max(1, prev - 1))}
@@ -186,11 +269,11 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                 >
                   ◀ Prev
                 </button>
-                <span className="text-[10px] text-gray-400 font-extrabold uppercase px-1">EP {activeEpisode}</span>
+                <span className="text-[10px] text-slate-400 font-extrabold uppercase px-1">EP {activeEpisode}</span>
                 <button
                   disabled={activeEpisode === (seasonDetails?.episodes?.length || 999)}
                   onClick={() => setActiveEpisode(prev => Math.min(seasonDetails?.episodes?.length || 999, prev + 1))}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#E50914] text-white hover:bg-red-700 disabled:opacity-30 disabled:hover:bg-[#E50914] transition-all"
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#EF4444] text-white hover:bg-[#DC2626] disabled:opacity-30 disabled:hover:bg-[#EF4444] transition-all"
                 >
                   Next ▶
                 </button>
@@ -198,9 +281,9 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
             )}
 
             <button 
-              onClick={() => setIsAddedToList(!isAddedToList)}
-              className={`h-10 px-4 rounded-xl bg-[#1A1A24] hover:bg-[#20202F] text-white font-bold text-xs flex items-center gap-2 border border-white/5 transition-all active:scale-95 cursor-pointer ${
-                isAddedToList ? "text-[#E50914] border-[#E50914]/30" : ""
+              onClick={handleToggleWatchlist}
+              className={`h-10 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold text-xs flex items-center gap-2 border border-white/5 transition-all active:scale-95 cursor-pointer ${
+                isAddedToList ? "text-[#EF4444] border-[#EF4444]/30" : ""
               }`}
             >
               <Bookmark size={14} className={isAddedToList ? "fill-current" : ""} />
@@ -208,9 +291,9 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
             </button>
 
             <button 
-              onClick={() => setIsFavorited(!isFavorited)}
-              className={`h-10 px-4 rounded-xl bg-[#1A1A24] hover:bg-[#20202F] text-white font-bold text-xs flex items-center gap-2 border border-white/5 transition-all active:scale-95 cursor-pointer ${
-                isFavorited ? "text-red-500 border-red-500/30" : ""
+              onClick={handleToggleFavorite}
+              className={`h-10 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold text-xs flex items-center gap-2 border border-white/5 transition-all active:scale-95 cursor-pointer ${
+                isFavorited ? "text-[#EF4444] border-[#EF4444]/30" : ""
               }`}
             >
               <Heart size={14} className={isFavorited ? "fill-current" : ""} />
@@ -222,26 +305,26 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                 navigator.clipboard.writeText(window.location.href);
                 alert("Share link copied to clipboard!");
               }}
-              className="h-10 px-4 rounded-xl bg-[#1A1A24] hover:bg-[#20202F] text-white font-bold text-xs flex items-center gap-2 border border-white/5 transition-all active:scale-95 cursor-pointer"
+              className="h-10 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-white font-bold text-xs flex items-center gap-2 border border-white/5 transition-all active:scale-95 cursor-pointer"
             >
               <Share2 size={14} />
               <span>Share</span>
             </button>
           </div>
-        </div>
+        </FadeUp>
 
         {/* TV Episodes list */}
         {mediaType === "tv" && (
-          <div className="space-y-4 bg-[#111116]/50 border border-white/5 p-6 rounded-2xl w-full">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <FadeUp className="space-y-4 bg-[#0A0A0F]/50 border border-white/5 p-6 rounded-2xl w-full">
+            <div className="flex items-center justify-between border-b border-white/5 pb-3">
               <h2 className="text-sm md:text-base font-extrabold text-white flex items-center gap-2 uppercase tracking-wider">
                 📺 Episode Guide
               </h2>
               
               {/* Season switcher */}
               {media.seasons?.length > 0 && (
-                <div className="flex items-center gap-2 bg-[#1A1A24] border border-white/10 rounded-xl px-3 py-1.5">
-                  <span className="text-[9px] text-gray-400 font-extrabold uppercase tracking-wider">Season:</span>
+                <div className="flex items-center gap-2 bg-white/5 border border-white/5 rounded-xl px-3 py-1.5">
+                  <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider">Season:</span>
                   <select
                     value={activeSeason}
                     onChange={(e) => {
@@ -253,7 +336,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                     {media.seasons
                       .filter((s: any) => s.season_number > 0)
                       .map((season: any) => (
-                        <option key={season.id} value={season.season_number} className="bg-[#111116] text-white">
+                        <option key={season.id} value={season.season_number} className="bg-[#0A0A0F] text-white">
                           {season.name}
                         </option>
                       ))}
@@ -281,8 +364,8 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                     onClick={() => setActiveEpisode(ep.episode_number)}
                     className={`relative w-72 md:w-80 flex flex-col gap-3 p-3 rounded-xl border text-left transition-all duration-300 flex-shrink-0 group ${
                       isCurrent
-                        ? "bg-[#111116] border-[#E50914] shadow-lg shadow-[#E50914]/15"
-                        : "bg-[#161622]/40 hover:bg-[#111116] border-white/5 hover:border-white/10"
+                        ? "bg-[#0A0A0F] border-[#EF4444] shadow-lg shadow-[#EF4444]/15"
+                        : "bg-white/2 hover:bg-[#0A0A0F] border-white/5 hover:border-white/10"
                     }`}
                   >
                     <div className="aspect-video w-full rounded-lg overflow-hidden relative border border-white/5 bg-white/5">
@@ -295,7 +378,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                           className="object-cover group-hover:scale-103 transition-transform duration-300"
                         />
                       ) : (
-                        <div className="flex items-center justify-center w-full h-full text-[10px] text-gray-500 font-bold">No Image</div>
+                        <div className="flex items-center justify-center w-full h-full text-[10px] text-slate-500 font-bold">No Image</div>
                       )}
 
                       <div className="absolute inset-0 bg-black/45 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10">
@@ -303,7 +386,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                       </div>
 
                       {isCurrent && (
-                        <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-[#E50914] text-[8px] font-extrabold text-white tracking-widest uppercase z-20">
+                        <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-[#EF4444] text-[8px] font-extrabold text-white tracking-widest uppercase z-20">
                           PLAYING
                         </div>
                       )}
@@ -311,7 +394,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                       {progress > 0 && (
                         <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-white/20 z-20">
                           <div 
-                            className="h-full bg-[#E50914] transition-all" 
+                            className="h-full bg-[#EF4444] transition-all" 
                             style={{ width: `${progress}%` }}
                           />
                         </div>
@@ -321,23 +404,23 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                     <div className="flex flex-col gap-1 w-full whitespace-normal">
                       <div className="flex items-center justify-between gap-2">
                         <span className={`text-[10px] font-extrabold uppercase tracking-widest ${
-                          isCurrent ? "text-[#E50914]" : "text-gray-400"
+                          isCurrent ? "text-[#EF4444]" : "text-slate-400"
                         }`}>
                           Episode {ep.episode_number}
                         </span>
-                        <span className="text-[10px] text-gray-500 font-bold">
+                        <span className="text-[10px] text-slate-500 font-bold">
                           {ep.runtime || 24} min
                         </span>
                       </div>
-                      <h4 className="font-bold text-sm text-white line-clamp-1 group-hover:text-[#E50914] transition-colors">
+                      <h4 className="font-bold text-sm text-white line-clamp-1 group-hover:text-[#EF4444] transition-colors">
                         {ep.name}
                       </h4>
-                      <p className="text-[11px] text-gray-400 mt-1 line-clamp-2 leading-relaxed">
+                      <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
                         {ep.overview || "No synopsis available for this episode."}
                       </p>
                       
                       {progress > 0 && (
-                        <span className="text-[9px] text-[#E50914] font-bold mt-1 flex items-center gap-1">
+                        <span className="text-[9px] text-[#EF4444] font-bold mt-1 flex items-center gap-1">
                           ✓ Watched {progress}%
                         </span>
                       )}
@@ -346,7 +429,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                 );
               })}
             </div>
-          </div>
+          </FadeUp>
         )}
 
         {/* Content details layout */}
@@ -357,14 +440,14 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
 
             {/* Leading Cast members row */}
             {media.credits?.cast?.length > 0 && (
-              <section className="pt-4">
-                <h2 className="text-sm md:text-base font-extrabold mb-4 flex items-center gap-2 border-b border-white/10 pb-2 text-white">
-                  <Sparkles size={14} className="text-[#E50914]" /> Leading Cast
+              <FadeUp className="pt-4">
+                <h2 className="text-sm md:text-base font-extrabold mb-4 flex items-center gap-2 border-b border-white/5 pb-2 text-white">
+                  <Sparkles size={14} className="text-[#EF4444]" /> Leading Cast
                 </h2>
                 <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x">
                   {media.credits.cast.slice(0, 10).map((person: any) => (
                     <Link href={`/person?id=${person.id}`} key={person.id} className="flex-none w-20 snap-start group text-center">
-                      <div className="relative w-16 h-16 mx-auto rounded-full overflow-hidden bg-white/5 mb-1.5 shadow-lg border border-white/10 group-hover:border-[#E50914]/40 transition-colors">
+                      <div className="relative w-16 h-16 mx-auto rounded-full overflow-hidden bg-white/5 mb-1.5 shadow-lg border border-white/5 group-hover:border-[#EF4444]/40 transition-colors">
                         {person.profile_path ? (
                           <Image
                             src={`https://image.tmdb.org/t/p/w185${person.profile_path}`}
@@ -374,22 +457,22 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                             className="object-cover group-hover:scale-105 transition-transform duration-300"
                           />
                         ) : (
-                          <div className="flex items-center justify-center w-full h-full text-[10px] text-gray-500 font-bold">No Photo</div>
+                          <div className="flex items-center justify-center w-full h-full text-[10px] text-slate-500 font-bold">No Photo</div>
                         )}
                       </div>
                       <p className="font-bold text-[10px] truncate px-1 text-white">{person.name}</p>
-                      <p className="text-[9px] text-gray-400 truncate px-1">{person.character}</p>
+                      <p className="text-[9px] text-slate-400 truncate px-1">{person.character}</p>
                     </Link>
                   ))}
                 </div>
-              </section>
+              </FadeUp>
             )}
 
             {/* Recommendations segment */}
             {media.similar?.results?.length > 0 && (
-              <section className="space-y-4 pt-4">
-                <h2 className="text-sm md:text-base font-extrabold flex items-center gap-2 border-b border-white/10 pb-2 text-white">
-                  <Sparkles size={14} className="text-[#E50914]" /> Recommended Titles
+              <FadeUp className="space-y-4 pt-4">
+                <h2 className="text-sm md:text-base font-extrabold flex items-center gap-2 border-b border-white/5 pb-2 text-white">
+                  <Sparkles size={14} className="text-[#EF4444]" /> Recommended Titles
                 </h2>
                 <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x">
                   {media.similar.results
@@ -399,23 +482,23 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                       <MovieCard key={item.id} item={item} mediaType={mediaType} />
                     ))}
                 </div>
-              </section>
+              </FadeUp>
             )}
 
             {/* Comments segment */}
-            <section className="bg-[#111116] border border-white/5 p-6 rounded-2xl space-y-4">
-              <h3 className="font-extrabold text-sm text-white uppercase tracking-wider border-b border-white/10 pb-2">
+            <FadeUp className="bg-[#0A0A0F] border border-white/5 p-6 rounded-2xl space-y-4 w-full">
+              <h3 className="font-extrabold text-sm text-white uppercase tracking-wider border-b border-white/5 pb-2">
                 💬 User Reviews & Comments
               </h3>
               <div className="space-y-4">
                 <div className="flex gap-3 border-b border-white/5 pb-3">
-                  <div className="w-8 h-8 rounded-full bg-[#E50914] text-white flex items-center justify-center font-bold text-xs">A</div>
+                  <div className="w-8 h-8 rounded-full bg-[#EF4444] text-white flex items-center justify-center font-bold text-xs">A</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-white">Alex Johnson</span>
-                      <span className="text-[9px] text-gray-500">2 hours ago</span>
+                      <span className="text-[9px] text-slate-500">2 hours ago</span>
                     </div>
-                    <p className="text-xs text-gray-300 mt-1 leading-relaxed">
+                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
                       Loved the pacing of this! The video stream was super fast and clean. Thanks for uploading.
                     </p>
                   </div>
@@ -426,9 +509,9 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-white">Maria S.</span>
-                      <span className="text-[9px] text-gray-500">1 day ago</span>
+                      <span className="text-[9px] text-slate-500">1 day ago</span>
                     </div>
-                    <p className="text-xs text-gray-300 mt-1 leading-relaxed">
+                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
                       One of my favorite episodes. The quality controls and speed parameters work flawlessly!
                     </p>
                   </div>
@@ -442,14 +525,14 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                   <input
                     type="text"
                     placeholder="Write a comment..."
-                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#E50914]"
+                    className="flex-1 bg-white/5 border border-white/5 rounded-xl px-4 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#EF4444]"
                   />
-                  <button className="px-4 py-2 bg-[#E50914] text-white font-bold text-xs rounded-xl hover:bg-red-700 transition-colors">
+                  <button className="px-4 py-2 bg-[#EF4444] text-white font-bold text-xs rounded-xl hover:bg-[#DC2626] transition-colors">
                     Post
                   </button>
                 </div>
               </div>
-            </section>
+            </FadeUp>
 
           </div>
 
@@ -457,30 +540,30 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
           <div className="w-full lg:w-80 shrink-0 space-y-6">
             
             {/* Synopsis Card */}
-            <div className="bg-[#111116] border border-white/5 p-6 rounded-2xl space-y-3">
-              <h3 className="font-extrabold text-xs text-white uppercase tracking-wider border-b border-white/10 pb-2">
+            <FadeUp className="bg-[#0A0A0F] border border-white/5 p-6 rounded-2xl space-y-3 w-full">
+              <h3 className="font-extrabold text-xs text-white uppercase tracking-wider border-b border-white/5 pb-2">
                 📖 Synopsis
               </h3>
-              <p className="text-xs text-gray-300 leading-relaxed select-text">
+              <p className="text-xs text-slate-300 leading-relaxed select-text">
                 {media.overview}
               </p>
-            </div>
+            </FadeUp>
 
             {/* Metadata technical block */}
-            <div className="bg-[#111116] border border-white/5 p-6 rounded-2xl space-y-4 text-[11px]">
-              <h3 className="font-extrabold text-xs text-white uppercase tracking-wider border-b border-white/10 pb-2">Metadata Details</h3>
+            <FadeUp className="bg-[#0A0A0F] border border-white/5 p-6 rounded-2xl space-y-4 text-[11px] w-full" delay={0.15}>
+              <h3 className="font-extrabold text-xs text-white uppercase tracking-wider border-b border-white/5 pb-2">Metadata Details</h3>
               
               <div className="flex justify-between items-center py-1 border-b border-white/5">
-                <span className="text-gray-400">Status</span>
+                <span className="text-slate-400">Status</span>
                 <span className="font-semibold text-white">{media.status}</span>
               </div>
               <div className="flex justify-between items-center py-1 border-b border-white/5">
-                <span className="text-gray-400">Language</span>
+                <span className="text-slate-400">Language</span>
                 <span className="font-semibold text-white uppercase">{media.original_language}</span>
               </div>
               {media.production_companies?.length > 0 && (
                 <div className="flex justify-between items-center py-1 border-b border-white/5">
-                  <span className="text-gray-400">Studio</span>
+                  <span className="text-slate-400">Studio</span>
                   <span className="font-semibold text-white truncate max-w-[140px]" title={media.production_companies[0].name}>
                     {media.production_companies[0].name}
                   </span>
@@ -488,7 +571,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
               )}
               {media.production_countries?.length > 0 && (
                 <div className="flex justify-between items-center py-1 border-b border-white/5">
-                  <span className="text-gray-400">Country</span>
+                  <span className="text-slate-400">Country</span>
                   <span className="font-semibold text-white truncate max-w-[140px]" title={media.production_countries[0].name}>
                     {media.production_countries[0].name}
                   </span>
@@ -497,17 +580,17 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
               
               {mediaType === "movie" && media.budget > 0 && (
                 <div className="flex justify-between items-center py-1 border-b border-white/5">
-                  <span className="text-gray-400">Budget</span>
+                  <span className="text-slate-400">Budget</span>
                   <span className="font-semibold text-white">${(media.budget / 1000000).toFixed(1)}M</span>
                 </div>
               )}
               {mediaType === "movie" && media.revenue > 0 && (
                 <div className="flex justify-between items-center py-1">
-                  <span className="text-gray-400">Box Office</span>
+                  <span className="text-slate-400">Box Office</span>
                   <span className="font-semibold text-white">${(media.revenue / 1000000).toFixed(1)}M</span>
                 </div>
               )}
-            </div>
+            </FadeUp>
           </div>
 
         </div>

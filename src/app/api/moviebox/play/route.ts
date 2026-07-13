@@ -89,7 +89,6 @@ async function getBearerToken(clientIp?: string | null): Promise<string> {
     }
   } catch (error) {
     console.error("Error acquiring bearer token:", error);
-    throw error;
   }
 
   return "";
@@ -194,29 +193,111 @@ function getMatchScore(itemTitle: string, targetTitle: string, requestedDub?: st
   return 0;
 }
 
+function parseLanguageFromTitle(title: string): { audioLanguage: string; isDubbed: boolean; isOriginal: boolean; isMultiAudio: boolean; language: string } {
+  const t = title.toLowerCase();
+  
+  // 1. Detect multi-audio
+  let isMultiAudio = t.includes("multi audio") || t.includes("dual audio") || t.includes("multi-audio") || t.includes("multi-lang") || t.includes("multi language");
+  
+  // 2. Parse language
+  let audioLanguage = "";
+  
+  // Parse bracketed text, e.g. [Spanish] or (French)
+  const bracketRegex = /[\[\()]([a-zA-Z\s]+)[\]\)]/g;
+  let matches;
+  while ((matches = bracketRegex.exec(title)) !== null) {
+    const val = matches[1].trim();
+    const valLower = val.toLowerCase();
+    const ignoreList = ["full", "hd", "1080p", "720p", "uncut", "bluray", "movie", "series", "s1", "s2", "e1", "e2", "webrip", "nf", "hevc", "x264", "sub", "dub", "multi", "eng", "hindi", "tamil", "telugu"];
+    if (!ignoreList.includes(valLower) && val.length > 2) {
+      audioLanguage = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
+      break;
+    }
+  }
+
+  // Keyword match fallback
+  const languages = [
+    { name: "Hindi", keywords: ["hindi", "hin"] },
+    { name: "Tamil", keywords: ["tamil", "tam"] },
+    { name: "Telugu", keywords: ["telugu", "tel"] },
+    { name: "Malayalam", keywords: ["malayalam", "mal"] },
+    { name: "Bengali", keywords: ["bengali", "ben"] },
+    { name: "Japanese", keywords: ["japanese", "jap", "jp"] },
+    { name: "Korean", keywords: ["korean", "kor", "ko"] },
+    { name: "Chinese", keywords: ["chinese", "chi", "zh"] },
+    { name: "Spanish", keywords: ["spanish", "esp", "es"] },
+    { name: "French", keywords: ["french", "fre", "fr"] },
+    { name: "German", keywords: ["german", "ger", "de"] },
+    { name: "Italian", keywords: ["italian", "ita", "it"] },
+    { name: "Russian", keywords: ["russian", "rus", "ru"] },
+    { name: "Arabic", keywords: ["arabic", "ara", "ar"] },
+    { name: "Turkish", keywords: ["turkish", "tur", "tr"] },
+    { name: "Thai", keywords: ["thai", "tha", "th"] },
+    { name: "Vietnamese", keywords: ["vietnamese", "vie", "vi"] },
+    { name: "Portuguese", keywords: ["portuguese", "por", "pt"] }
+  ];
+
+  if (!audioLanguage) {
+    for (const lang of languages) {
+      if (lang.keywords.some(k => t.includes(k))) {
+        audioLanguage = lang.name;
+        break;
+      }
+    }
+  }
+
+  if (!audioLanguage) {
+    audioLanguage = "English"; // Default fallback
+  }
+
+  // 3. Dub vs Sub
+  let isDubbed = false;
+  if (t.includes("dub") || t.includes("dubbed")) {
+    isDubbed = true;
+  } else if (audioLanguage !== "English" && !t.includes("sub") && !t.includes("subbed")) {
+    isDubbed = true;
+  }
+
+  let isOriginal = !isDubbed;
+  if (t.includes("original") || t.includes("org")) {
+    isOriginal = true;
+    isDubbed = false;
+  }
+
+  // 4. Group name
+  let language = "";
+  if (isMultiAudio) {
+    language = "Multi Audio";
+  } else if (isDubbed) {
+    language = `${audioLanguage} Dub`;
+  } else if (audioLanguage === "English") {
+    language = "English SUB";
+  } else {
+    language = `${audioLanguage} Original`;
+  }
+
+  return { audioLanguage, isDubbed, isOriginal, isMultiAudio, language };
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const title = searchParams.get("title");
   const mediaType = searchParams.get("mediaType") || "movie";
-  let season = parseInt(searchParams.get("season") || "1", 10);
-  let episode = parseInt(searchParams.get("episode") || "1", 10);
-  if (isNaN(season) || season < 1) season = 1;
-  if (isNaN(episode) || episode < 1) episode = 1;
-  const dub = searchParams.get("dub");
+  const season = parseInt(searchParams.get("season") || "1", 10);
+  const episode = parseInt(searchParams.get("episode") || "1", 10);
   const imdbId = searchParams.get("imdbId");
 
   if (!title) {
     return NextResponse.json({ error: "Missing title parameter" }, { status: 400 });
   }
 
-  // Parse client IP for geo-bypassing
   const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || req.ip || "103.197.204.1";
 
-  const cacheKey = `${mediaType}:${title}:s${season}:e${episode}:d${dub || ""}:${imdbId || ""}:${clientIp}`;
+  const cacheKey = `${mediaType}:${title}:s${season}:e${episode}:${imdbId || ""}:${clientIp}`;
   const cached = playCache.get(cacheKey);
   const now = Date.now();
   if (cached && cached.expiry > now) {
-    console.log(`[Play Cache Hit] Serving play data: ${cacheKey}`);
+    console.log(`[Play Cache Hit] Serving aggregated play data: ${cacheKey}`);
     return NextResponse.json(cached.data, {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
@@ -232,329 +313,221 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Failed to authenticate with provider backend" }, { status: 502 });
     }
 
-    // 1. Determine search keywords (Hindi, Tamil, Telugu vs default)
     const cleanedTitle = title.replace(/[:\-]/g, " ").replace(/\s+/g, " ").trim();
-    let keywordsToTry = [];
+    const keywordsToTry = [];
 
-    // Prioritize search by IMDb ID if available to guarantee exact match
     if (imdbId && imdbId.startsWith("tt")) {
       keywordsToTry.push(imdbId);
     }
-
-    if (dub === "hindi") {
-      keywordsToTry.push(`${title} [Hindi]`, `${title} Hindi`, `${cleanedTitle} [Hindi]`, title);
-    } else if (dub === "tamil") {
-      keywordsToTry.push(`${title} [Tamil]`, `${title} Tamil`, `${cleanedTitle} [Tamil]`, title);
-    } else if (dub === "telugu") {
-      keywordsToTry.push(`${title} [Telugu]`, `${title} Telugu`, `${cleanedTitle} [Telugu]`, title);
-    } else {
-      keywordsToTry.push(title);
-      if (cleanedTitle !== title) {
-        keywordsToTry.push(cleanedTitle);
-      }
+    keywordsToTry.push(title);
+    if (cleanedTitle !== title) {
+      keywordsToTry.push(cleanedTitle);
     }
+    keywordsToTry.push(`${title} Hindi`, `${title} Tamil`, `${title} Telugu`);
 
-    let matchedItem: any = null;
-    let searchItems: any[] = [];
+    const allSearchItems: any[] = [];
+    const seenIds = new Set<number>();
     const targetType = mediaType === "movie" ? 1 : 2;
 
     for (const keyword of keywordsToTry) {
-      console.log(`Searching MovieBox for: ${keyword}`);
       try {
         const searchRes = await makePostRequest(`${API_BASE}/subject/search`, {
           keyword,
           page: 1,
-          perPage: 20
+          perPage: 15
         }, token, clientIp);
 
         const items = searchRes?.data?.items || searchRes?.data?.list || [];
-        if (items.length > 0) {
-          // Enforce subject type match first (ignore short clips, trailers, etc. - type 6)
-          const typedItems = items.filter((item: any) => {
-            const itemType = Number(item.type || item.subjectType || item.contentType || 0);
-            return itemType === targetType;
-          });
-          const itemsToMatch = typedItems.length > 0 ? typedItems : items;
-
-          searchItems = itemsToMatch;
-          console.log("Raw items from MovieBox search:", JSON.stringify(itemsToMatch.map((i: any) => ({
-            id: i.subjectId,
-            title: i.title,
-            type: i.type || i.subjectType || i.contentType,
-            path: i.detailPath
-          })), null, 2));
-
-          // Score and rank all items to find the best match
-          const scoredItems = itemsToMatch.map((item: any) => {
-            const itemTitle = item.title || "";
-            const score = getMatchScore(itemTitle, title, dub);
-            return { item, score };
-          });
-
-          // Sort descending by score
-          scoredItems.sort((a: any, b: any) => b.score - a.score);
-          
-          console.log("Scored search results:", JSON.stringify(scoredItems.map((si: any) => ({
-            title: si.item.title,
-            score: si.score
-          })), null, 2));
-
-          // Pick the item with the highest score if score > 0, otherwise fallback to first search item if they share a word
-          if (scoredItems.length > 0 && scoredItems[0].score > 0) {
-            matchedItem = scoredItems[0].item;
-          } else if (itemsToMatch.length > 0 && shareSignificantWord(itemsToMatch[0].title || "", title)) {
-            matchedItem = itemsToMatch[0];
+        for (const item of items) {
+          const itemType = Number(item.type || item.subjectType || item.contentType || 0);
+          if (itemType === targetType && !seenIds.has(item.subjectId)) {
+            seenIds.add(item.subjectId);
+            allSearchItems.push(item);
           }
-          break; // Found matches, break loop
         }
       } catch (err) {
         console.error(`Search failed for keyword ${keyword}:`, err);
       }
     }
 
-    // Compile available dub servers list dynamically
-    const availableDubs: any[] = [];
-    if (searchItems.length > 0) {
-      const hasDefault = searchItems.some((item: any) => {
-        const itemTitle = (item.title || "").toLowerCase();
-        return !itemTitle.includes("hindi") && 
-               !itemTitle.includes("tamil") && 
-               !itemTitle.includes("telugu");
-      }) || searchItems.length > 0;
+    const scoredItems = allSearchItems
+      .map((item) => ({ item, score: getMatchScore(item.title || "", title, null) }))
+      .sort((a, b) => b.score - a.score);
 
-      if (hasDefault) {
-        availableDubs.push({ id: 0, name: "Plexoria Server (English / Multi-Sub)", dub: "" });
-      }
-
-      const hasHindi = searchItems.some((item: any) => {
-        const itemTitle = (item.title || "").toLowerCase();
-        return itemTitle.includes("hindi");
-      });
-      if (hasHindi) {
-        availableDubs.push({ id: 200, name: "Plexoria Server (Hindi Dubbed)", dub: "hindi" });
-      }
-
-      const hasTamil = searchItems.some((item: any) => {
-        const itemTitle = (item.title || "").toLowerCase();
-        return itemTitle.includes("tamil");
-      });
-      if (hasTamil) {
-        availableDubs.push({ id: 300, name: "Plexoria Server (Tamil Dubbed)", dub: "tamil" });
-      }
-
-      const hasTelugu = searchItems.some((item: any) => {
-        const itemTitle = (item.title || "").toLowerCase();
-        return itemTitle.includes("telugu");
-      });
-      if (hasTelugu) {
-        availableDubs.push({ id: 400, name: "Plexoria Server (Telugu Dubbed)", dub: "telugu" });
-      }
-    } else {
-      availableDubs.push({ id: 0, name: "Plexoria Server (English / Multi-Sub)", dub: "" });
+    const matchedItems: typeof allSearchItems = [];
+    if (scoredItems.length > 0 && scoredItems[0].score > 0) {
+      matchedItems.push(scoredItems[0].item);
+    } else if (allSearchItems.length > 0 && shareSignificantWord(allSearchItems[0].title || "", title)) {
+      matchedItems.push(allSearchItems[0]);
     }
 
-    if (!matchedItem) {
+    if (matchedItems.length === 0) {
       return NextResponse.json({ error: "No matching titles found in streaming database" }, { status: 404 });
     }
 
-    let subjectId = matchedItem.subjectId || matchedItem.id;
-    let detailPath = matchedItem.detailPath || matchedItem.path;
-    console.log(`Matched MovieBox title: ${matchedItem.title} (ID: ${subjectId}, Path: ${detailPath})`);
+    // Concurrent Stream Resolver
+    const streamsAndCaptions = await Promise.all(matchedItems.map(async (item) => {
+      const subjectId = item.subjectId;
+      const detailPath = item.detailPath;
+      let actualSeason = season;
 
-    // Dynamic Season Resolver: MovieBox might index seasons non-sequentially or as separate groups (e.g. S15-S16)
-    let actualSeason = season;
-    if (mediaType === "tv") {
-      try {
-        const detailData = await makeGetRequest(`${API_BASE}/detail?detailPath=${detailPath}`, token, clientIp);
-        const seasonsList = detailData?.data?.resource?.seasons || [];
-        if (seasonsList.length > 0) {
-          // Map user's 1-indexed relative season selector to the actual database season number
-          const targetIndex = Math.min(Math.max(season - 1, 0), seasonsList.length - 1);
-          const mappedSeason = seasonsList[targetIndex].se;
-          if (mappedSeason) {
-            actualSeason = mappedSeason;
-            console.log(`Resolved: Mapped relative season ${season} to actual MovieBox database season ${actualSeason}`);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to map season using details API:", err);
-      }
-    }
-
-    // 2. Fetch media player domain
-    const domRes = await fetchWithTimeout(`${API_BASE}/media-player/get-domain`, {
-      headers: {
-        ...DEFAULT_HEADERS,
-        "Authorization": `Bearer ${token}`,
-        ...(clientIp ? { "X-Forwarded-For": clientIp, "X-Real-IP": clientIp } : {})
-      }
-    });
-    const domData = await domRes.json();
-    const domain = (domData?.data || "https://netfilm.world").replace(/\/$/, "");
-
-    // 3. Request stream info from netfilm.world
-    const isMovie = mediaType === "movie";
-    const querySe = isMovie ? 0 : actualSeason;
-    const queryEp = isMovie ? 0 : episode;
-
-    const playerReferer = `https://moviebox.ph/spa/videoPlayPage/movies/${detailPath}?id=${subjectId}&type=/movie/detail&detailSe=${querySe}&detailEp=${queryEp}&lang=en`;
-    const playUrl = `${API_BASE}/subject/play?subjectId=${subjectId}&se=${querySe}&ep=${queryEp}&detailPath=${detailPath}`;
-
-    console.log(`Querying h5-api play URL: ${playUrl}`);
-    const playRes = await fetchWithTimeout(playUrl, {
-      headers: {
-        ...DEFAULT_HEADERS,
-        "Referer": playerReferer,
-        "Authorization": `Bearer ${token}`,
-        ...(clientIp ? { "X-Forwarded-For": clientIp, "X-Real-IP": clientIp } : {})
-      }
-    });
-
-    if (!playRes.ok) {
-      return NextResponse.json({ error: `Netfilm player request failed with status ${playRes.status}` }, { status: 502 });
-    }
-
-    let playData = await playRes.json();
-    let streamsData = playData?.data || {};
-
-    let rawStreams = streamsData.streams || [];
-    let hlsList = streamsData.hls || [];
-    let dashList = streamsData.dash || [];
-
-    // Fallback: If requested dub has no streams, try falling back to default/English version
-    if (rawStreams.length === 0 && hlsList.length === 0 && dub) {
-      console.log(`Requested dub "${dub}" has no active streams. Attempting fallback to default/English stream...`);
-      const defaultScoredItems = searchItems.map((item: any) => {
-        const itemTitle = item.title || "";
-        const score = getMatchScore(itemTitle, title, null);
-        return { item, score };
-      });
-      defaultScoredItems.sort((a: any, b: any) => b.score - a.score);
-
-      let defaultMatchedItem = null;
-      if (defaultScoredItems.length > 0 && defaultScoredItems[0].score > 0) {
-        defaultMatchedItem = defaultScoredItems[0].item;
-      } else if (searchItems.length > 0 && shareSignificantWord(searchItems[0].title || "", title)) {
-        defaultMatchedItem = searchItems[0];
-      }
-
-      if (defaultMatchedItem && (defaultMatchedItem.id || defaultMatchedItem.subjectId) !== subjectId) {
-        const fallbackSubjectId = defaultMatchedItem.id || defaultMatchedItem.subjectId;
-        const fallbackDetailPath = defaultMatchedItem.path || defaultMatchedItem.detailPath;
-        const fallbackPlayerReferer = `https://moviebox.ph/spa/videoPlayPage/movies/${fallbackDetailPath}?id=${fallbackSubjectId}&type=/movie/detail&detailSe=${querySe}&detailEp=${queryEp}&lang=en`;
-        const fallbackPlayUrl = `${API_BASE}/subject/play?subjectId=${fallbackSubjectId}&se=${querySe}&ep=${queryEp}&detailPath=${fallbackDetailPath}`;
-
-        console.log(`Querying fallback default play URL: ${fallbackPlayUrl}`);
+      if (mediaType === "tv") {
         try {
-          const fallbackPlayRes = await fetchWithTimeout(fallbackPlayUrl, {
-            headers: {
-              ...DEFAULT_HEADERS,
-              "Referer": fallbackPlayerReferer,
-              "Authorization": `Bearer ${token}`,
-              ...(clientIp ? { "X-Forwarded-For": clientIp, "X-Real-IP": clientIp } : {})
-            }
-          });
-          if (fallbackPlayRes.ok) {
-            const fallbackPlayData = await fallbackPlayRes.json();
-            const fallbackStreamsData = fallbackPlayData?.data || {};
-            const fallbackRawStreams = fallbackStreamsData.streams || [];
-            const fallbackHlsList = fallbackStreamsData.hls || [];
-
-            if (fallbackRawStreams.length > 0 || fallbackHlsList.length > 0) {
-              console.log(`Successfully resolved fallback default stream: ${defaultMatchedItem.title}`);
-              playData = fallbackPlayData;
-              streamsData = fallbackStreamsData;
-              rawStreams = fallbackRawStreams;
-              hlsList = fallbackHlsList;
-              dashList = fallbackStreamsData.dash || [];
-              
-              // Update subjectId and detailPath variables
-              subjectId = fallbackSubjectId;
-              detailPath = fallbackDetailPath;
-              matchedItem = defaultMatchedItem;
+          const detailData = await makeGetRequest(`${API_BASE}/detail?detailPath=${detailPath}`, token, clientIp);
+          const seasonsList = detailData?.data?.resource?.seasons || [];
+          if (seasonsList.length > 0) {
+            const targetIndex = Math.min(Math.max(season - 1, 0), seasonsList.length - 1);
+            const mappedSeason = seasonsList[targetIndex].se;
+            if (mappedSeason) {
+              actualSeason = mappedSeason;
             }
           }
-        } catch (fallbackErr) {
-          console.error("Failed to fetch fallback default stream:", fallbackErr);
+        } catch (err) {
+          console.error(`Failed to map season for item ${item.title}:`, err);
         }
       }
-    }
 
-    const streams = rawStreams.map((s: any) => ({
-      resolution: `${s.resolutions}p`,
-      format: s.format,
-      url: s.url,
-      size: s.size,
-      duration: s.duration,
-      codec: s.codecName,
-      vipLocked: false,
-    }));
+      const isMovie = mediaType === "movie";
+      const querySe = isMovie ? 0 : actualSeason;
+      const queryEp = isMovie ? 0 : episode;
+      const playUrl = `${API_BASE}/subject/play?subjectId=${subjectId}&se=${querySe}&ep=${queryEp}&detailPath=${detailPath}`;
+      const playerReferer = `https://moviebox.ph/spa/videoPlayPage/movies/${detailPath}?id=${subjectId}&type=/movie/detail&detailSe=${querySe}&detailEp=${queryEp}&lang=en`;
 
-    const hls = hlsList.map((s: any) => ({
-      resolution: `${s.resolutions}p`,
-      format: s.format,
-      url: s.url,
-      vipLocked: false,
-    }));
-
-    const dash = dashList.map((s: any) => ({
-      resolution: `${s.resolutions}p`,
-      format: s.format,
-      url: s.url,
-      vipLocked: false,
-    }));
-
-    // 4. Retrieve captions
-    let captions: any[] = [];
-    let streamId = null;
-    let streamFormat = "MP4";
-
-    if (rawStreams.length > 0) {
-      streamId = rawStreams[0].id;
-      streamFormat = rawStreams[0].format || "MP4";
-    } else if (hlsList.length > 0) {
-      streamId = hlsList[0].id;
-      streamFormat = hlsList[0].format || "HLS";
-    }
-
-    if (streamId) {
       try {
-        const captionUrl = `${API_BASE}/subject/caption?format=${streamFormat}&id=${streamId}&subjectId=${subjectId}&detailPath=${detailPath}`;
-        console.log(`Fetching captions from: ${captionUrl}`);
-        const capRes = await fetchWithTimeout(captionUrl, {
+        const playRes = await fetchWithTimeout(playUrl, {
           headers: {
             ...DEFAULT_HEADERS,
+            "Referer": playerReferer,
             "Authorization": `Bearer ${token}`,
             ...(clientIp ? { "X-Forwarded-For": clientIp, "X-Real-IP": clientIp } : {})
           }
         });
-        if (capRes.ok) {
-          const capData = await capRes.json();
-          const list = capData?.data?.captions || capData?.data || [];
-          if (Array.isArray(list)) {
-            captions = list.map((c: any) => ({
-              id: c.id,
-              languageCode: c.lan,
-              language: c.lanName,
-              url: c.url,
-            }));
+        if (!playRes.ok) return null;
+        const playData = await playRes.json();
+        const streamsData = playData?.data || {};
+
+        const rawStreams = streamsData.streams || [];
+        const hlsList = streamsData.hls || [];
+        const dashList = streamsData.dash || [];
+
+        let captions: any[] = [];
+        let streamId = null;
+        let streamFormat = "MP4";
+
+        if (rawStreams.length > 0) {
+          streamId = rawStreams[0].id;
+          streamFormat = rawStreams[0].format || "MP4";
+        } else if (hlsList.length > 0) {
+          streamId = hlsList[0].id;
+          streamFormat = hlsList[0].format || "HLS";
+        }
+
+        if (streamId) {
+          try {
+            const captionUrl = `${API_BASE}/subject/caption?format=${streamFormat}&id=${streamId}&subjectId=${subjectId}&detailPath=${detailPath}`;
+            const capRes = await fetchWithTimeout(captionUrl, {
+              headers: {
+                ...DEFAULT_HEADERS,
+                "Authorization": `Bearer ${token}`,
+                ...(clientIp ? { "X-Forwarded-For": clientIp, "X-Real-IP": clientIp } : {})
+              }
+            });
+            if (capRes.ok) {
+              const capData = await capRes.json();
+              const list = capData?.data?.captions || capData?.data || [];
+              if (Array.isArray(list)) {
+                captions = list.map((c: any) => ({
+                  id: c.id,
+                  languageCode: c.lan,
+                  language: c.lanName,
+                  url: c.url,
+                }));
+              }
+            }
+          } catch (err) {
+            console.error(`Subtitles failed for stream ${streamId}:`, err);
           }
         }
+
+        return {
+          item,
+          rawStreams,
+          hlsList,
+          dashList,
+          captions
+        };
       } catch (err) {
-        console.error("Failed to retrieve subtitles:", err);
+        console.error(`Play request failed for item ${item.title}:`, err);
+        return null;
       }
+    }));
+
+    const normalizedStreams: any[] = [];
+    const uniqueCaptions = new Map<string, any>();
+
+    streamsAndCaptions.forEach((res) => {
+      if (!res) return;
+      const { item, rawStreams, hlsList, dashList, captions } = res;
+      const parsed = parseLanguageFromTitle(item.title || "");
+
+      captions.forEach((c: any) => {
+        uniqueCaptions.set(c.url, c);
+      });
+
+      const combinedList = [
+        ...rawStreams.map((s: any) => ({ ...s, streamFormat: "MP4" })),
+        ...hlsList.map((s: any) => ({ ...s, streamFormat: "HLS" })),
+        ...dashList.map((s: any) => ({ ...s, streamFormat: "DASH" }))
+      ].filter((s: any) => s.url);
+
+      combinedList.forEach((s: any, idx: number) => {
+        const resolution = s.resolutions ? `${s.resolutions}p` : `${s.resolution || "1080p"}`;
+        const cleanRes = resolution.replace(/p$/, "");
+        const resVal = parseInt(cleanRes) || 720;
+
+        let score = resVal / 10;
+        if (s.streamFormat === "HLS") score += 5;
+        if (s.codecName && s.codecName.toLowerCase().includes("hevc")) score += 10;
+
+        const serverName = `Server ${idx + 1} (${s.streamFormat})`;
+
+        normalizedStreams.push({
+          provider: "MovieBox",
+          language: parsed.language,
+          audioLanguage: parsed.audioLanguage,
+          subtitleLanguages: captions.map((c: any) => c.language),
+          resolution: `${resVal}p`,
+          codec: s.codecName || "h264",
+          hdr: s.codecName?.toLowerCase()?.includes("hevc") || false,
+          streamUrl: s.url,
+          health: "active",
+          qualityScore: score,
+          isDubbed: parsed.isDubbed,
+          isOriginal: parsed.isOriginal,
+          isMultiAudio: parsed.isMultiAudio,
+          serverName
+        });
+      });
+    });
+
+    if (normalizedStreams.length === 0) {
+      return NextResponse.json({ error: "No free streaming sources available for this title" }, { status: 404 });
     }
 
+    // Dynamic availableDubs list for legacy UI support
+    const availableDubs = Array.from(new Set(normalizedStreams.map(s => s.language))).map((lang, idx) => ({
+      id: idx,
+      name: `Plexoria Server (${lang})`,
+      dub: lang.toLowerCase().includes("hindi") ? "hindi" : (lang.toLowerCase().includes("tamil") ? "tamil" : (lang.toLowerCase().includes("telugu") ? "telugu" : ""))
+    }));
+
     const responseData = {
-      title: matchedItem.title,
-      subjectId,
-      detailPath,
-      hasResource: streamsData.hasResource || false,
-      streams,
-      hls,
-      dash: [],
-      captions,
-      availableDubs
+      title: matchedItems[0].title,
+      streams: normalizedStreams,
+      captions: Array.from(uniqueCaptions.values()),
+      availableDubs,
+      legacyStreams: normalizedStreams.filter(s => !s.isDubbed),
+      legacyHls: normalizedStreams.filter(s => !s.isDubbed && s.codec === "h264")
     };
 
     if (playCache.size >= 100) {
@@ -575,9 +548,6 @@ export async function GET(req: NextRequest) {
 
   } catch (error: any) {
     console.error("Error in MovieBox route:", error);
-    if (error.name === "AbortError") {
-      return NextResponse.json({ error: "Upstream server timeout" }, { status: 504 });
-    }
-    return NextResponse.json({ error: "Bad gateway", details: error.message }, { status: 502 });
+    return NextResponse.json({ error: "Internal Server Error", details: error.message }, { status: 500 });
   }
 }

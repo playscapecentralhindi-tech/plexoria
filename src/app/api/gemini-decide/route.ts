@@ -10,24 +10,9 @@ interface ServerMetric {
 }
 
 export async function POST(req: NextRequest) {
-  let body;
   try {
-    body = await req.json();
-  } catch (e) {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  try {
-    const { mediaType, id } = body;
-    let parsedSeason = parseInt(body.season, 10);
-    let parsedEpisode = parseInt(body.episode, 10);
-
-    if (isNaN(parsedSeason) || parsedSeason < 1) {
-      parsedSeason = 1;
-    }
-    if (isNaN(parsedEpisode) || parsedEpisode < 1) {
-      parsedEpisode = 1;
-    }
+    const body = await req.json();
+    const { mediaType, id, season, episode } = body;
 
     if (!mediaType || !id) {
       return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
@@ -35,11 +20,11 @@ export async function POST(req: NextRequest) {
 
     // 5 base providers
     const baseProviders = [
-      { id: 1, name: "VidSrc Master", url: `https://vidsrc.to/embed/${mediaType}/${id}${mediaType === "tv" ? `/${parsedSeason}/${parsedEpisode}` : ""}` },
-      { id: 2, name: "Embed.su Multi", url: `https://embed.su/embed/${mediaType}/${id}${mediaType === "tv" ? `/${parsedSeason}/${parsedEpisode}` : ""}` },
-      { id: 3, name: "VidSrc CC", url: `https://vidsrc.cc/v2/embed/${mediaType}/${id}${mediaType === "tv" ? `/${parsedSeason}/${parsedEpisode}` : ""}` },
-      { id: 4, name: "AutoEmbed Multi", url: `https://player.autoembed.cc/embed/${mediaType}/${id}${mediaType === "tv" ? `/${parsedSeason}/${parsedEpisode}` : ""}` },
-      { id: 5, name: "VidLink AdFree", url: `https://vidlink.pro/${mediaType}/${id}${mediaType === "tv" ? `/${parsedSeason}/${parsedEpisode}` : ""}` }
+      { id: 1, name: "VidSrc Master", url: `https://vidsrc.to/embed/${mediaType}/${id}${mediaType === "tv" ? `/${season}/${episode}` : ""}` },
+      { id: 2, name: "Embed.su Multi", url: `https://embed.su/embed/${mediaType}/${id}${mediaType === "tv" ? `/${season}/${episode}` : ""}` },
+      { id: 3, name: "VidSrc CC", url: `https://vidsrc.cc/v2/embed/${mediaType}/${id}${mediaType === "tv" ? `/${season}/${episode}` : ""}` },
+      { id: 4, name: "AutoEmbed Multi", url: `https://player.autoembed.cc/embed/${mediaType}/${id}${mediaType === "tv" ? `/${season}/${episode}` : ""}` },
+      { id: 5, name: "VidLink AdFree", url: `https://vidlink.pro/${mediaType}/${id}${mediaType === "tv" ? `/${season}/${episode}` : ""}` }
     ];
 
     // Check all 5 providers in parallel
@@ -89,42 +74,33 @@ export async function POST(req: NextRequest) {
 
     if (apiKey) {
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-        let geminiRes;
-        try {
-          geminiRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              signal: controller.signal,
-              body: JSON.stringify({
-                contents: [{
-                  parts: [{
-                    text: `You are an expert streaming traffic load balancer. Analyze the following real-time latency and status metrics for 5 video embed servers. 
-                    Choose the best server based on these guidelines:
-                    1. Prefer servers that are "online".
-                    2. Among online servers, prefer the one with the lowest latency.
-                    3. If all servers are offline, return server ID 5 as a fallback.
-                    
-                    Respond ONLY in clean JSON format: { "bestServerId": <number>, "reason": "<string>" }
-                    
-                    Metrics: ${JSON.stringify(metrics)}`
-                  }]
-                }],
-                generationConfig: {
-                  responseMimeType: "application/json"
-                }
-              })
-            }
-          );
-        } finally {
-          clearTimeout(timeoutId);
-        }
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{
+                  text: `You are an expert streaming traffic load balancer. Analyze the following real-time latency and status metrics for 5 video embed servers. 
+                  Choose the best server based on these guidelines:
+                  1. Prefer servers that are "online".
+                  2. Among online servers, prefer the one with the lowest latency.
+                  3. If all servers are offline, return server ID 5 as a fallback.
+                  
+                  Respond ONLY in clean JSON format: { "bestServerId": <number>, "reason": "<string>" }
+                  
+                  Metrics: ${JSON.stringify(metrics)}`
+                }]
+              }],
+              generationConfig: {
+                responseMimeType: "application/json"
+              }
+            })
+          }
+        );
 
         if (geminiRes.ok) {
           const geminiData = await geminiRes.json();
