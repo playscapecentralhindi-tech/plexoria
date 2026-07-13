@@ -24,8 +24,8 @@ const tokenCache = new Map<string, TokenData>();
 const playCache = new Map<string, { data: any; expiry: number }>();
 const PLAY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// FIX #1: Increased timeout from 5s to 15s — MovieBox API is slow
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+// Per-request timeout: 8s (fits within Vercel 10s free limit with buffer)
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -311,24 +311,26 @@ export async function GET(req: NextRequest) {
     const seenIds = new Set<number>();
     const targetType = mediaType === "movie" ? 1 : 2;
 
-    for (const keyword of keywordsToTry) {
-      try {
-        const searchRes = await makePostRequest(`${API_BASE}/subject/search`, {
+    // Run ALL keyword searches IN PARALLEL — critical for Vercel's 10s function limit
+    const searchResults = await Promise.allSettled(
+      keywordsToTry.map(keyword =>
+        makePostRequest(`${API_BASE}/subject/search`, {
           keyword,
           page: 1,
           perPage: 20
-        }, token, clientIp);
+        }, token, clientIp)
+      )
+    );
 
-        const items = searchRes?.data?.items || searchRes?.data?.list || [];
-        for (const item of items) {
-          const itemType = Number(item.type || item.subjectType || item.contentType || 0);
-          if (itemType === targetType && !seenIds.has(item.subjectId)) {
-            seenIds.add(item.subjectId);
-            allSearchItems.push(item);
-          }
+    for (const result of searchResults) {
+      if (result.status === "rejected") continue;
+      const items = result.value?.data?.items || result.value?.data?.list || [];
+      for (const item of items) {
+        const itemType = Number(item.type || item.subjectType || item.contentType || 0);
+        if (itemType === targetType && !seenIds.has(item.subjectId)) {
+          seenIds.add(item.subjectId);
+          allSearchItems.push(item);
         }
-      } catch (err) {
-        console.error(`Search failed for keyword "${keyword}":`, err);
       }
     }
 

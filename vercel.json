@@ -4,19 +4,19 @@
   "installCommand": "npm install",
   "outputDirectory": ".next",
   "functions": {
-    "src/app/api/moviebox/play/route.ts": {
-      "maxDuration": 30
-    },
-    "src/app/api/moviebox/proxy-stream/route.ts": {
+    "app/api/moviebox/play/route.ts": {
       "maxDuration": 60
     },
-    "src/app/api/tmdb/[...path]/route.ts": {
+    "app/api/moviebox/proxy-stream/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/tmdb/[...path]/route.ts": {
       "maxDuration": 15
     },
-    "src/app/api/gemini-decide/route.ts": {
+    "app/api/gemini-decide/route.ts": {
       "maxDuration": 20
     },
-    "src/app/api/search/autocorrect/route.ts": {
+    "app/api/search/autocorrect/route.ts": {
       "maxDuration": 10
     }
   },
