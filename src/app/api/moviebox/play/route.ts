@@ -261,6 +261,7 @@ export async function GET(req: NextRequest) {
   const season = parseInt(searchParams.get("season") || "1", 10);
   const episode = parseInt(searchParams.get("episode") || "1", 10);
   const imdbId = searchParams.get("imdbId");
+  const requestedDub = searchParams.get("dub"); // e.g. "hindi", "tamil", "telugu"
 
   if (!title) {
     return NextResponse.json({ error: "Missing title parameter" }, { status: 400 });
@@ -288,13 +289,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Failed to authenticate with provider backend" }, { status: 502 });
     }
 
-    // FIX #2 & #4: Don't search by IMDb ID (MovieBox doesn't support it).
-    // Build clean keyword list from title only.
+    // Build keyword list. Don't use IMDb ID — MovieBox search ignores it.
     const cleanedTitle = title.replace(/[:\-]/g, " ").replace(/\s+/g, " ").trim();
     const keywordsToTry: string[] = [title];
     if (cleanedTitle !== title) keywordsToTry.push(cleanedTitle);
 
-    // Also try first word of title for short-name fallback (e.g. "Avatar" for "Avatar: The Way of Water")
+    // Search dubbed variants explicitly — MovieBox stores dubs as separate entries
+    // e.g. "Pushpa 2 Hindi", "Pushpa 2 (Hindi Dubbed)", "Pushpa 2 Tamil"
+    const dubLangs = ["Hindi", "Tamil", "Telugu", "Korean", "Japanese"];
+    for (const lang of dubLangs) {
+      keywordsToTry.push(`${cleanedTitle} ${lang}`);
+    }
+
+    // Fallback: first word of title (helps for subtitled titles)
     const firstWord = cleanedTitle.split(" ")[0];
     if (firstWord && firstWord.length > 3 && !keywordsToTry.includes(firstWord)) {
       keywordsToTry.push(firstWord);
@@ -330,20 +337,20 @@ export async function GET(req: NextRequest) {
     }
 
     // Score and pick top candidates (up to 5) to try streaming from
+    // Score all results — pass requestedDub so preferred language gets priority
     const scoredItems = allSearchItems
-      .map((item) => ({ item, score: getMatchScore(item.title || "", title, null) }))
+      .map((item) => ({ item, score: getMatchScore(item.title || "", title, requestedDub) }))
       .sort((a, b) => b.score - a.score);
 
-    // FIX #1: Take up to 5 top-scored items, not just 1. Fallback chain gives resilience.
+    // Take up to 8 top-scored items for max stream coverage
     let matchedItems: typeof allSearchItems = [];
-    if (scoredItems[0].score > 0) {
-      matchedItems = scoredItems.slice(0, 5).filter(s => s.score > 0).map(s => s.item);
-    } else {
-      // Zero-score fallback: try first item only if significant word matches
-      const fallbackItem = allSearchItems[0];
-      if (shareSignificantWord(fallbackItem.title || "", title)) {
-        matchedItems = [fallbackItem];
-      }
+    if (scoredItems.length > 0 && scoredItems[0].score > 0) {
+      matchedItems = scoredItems.slice(0, 8).filter(s => s.score > 0).map(s => s.item);
+    } else if (allSearchItems.length > 0) {
+      // Zero-score fallback: accept any item sharing a significant word
+      matchedItems = allSearchItems
+        .filter(item => shareSignificantWord(item.title || "", title))
+        .slice(0, 3);
     }
 
     if (matchedItems.length === 0) {

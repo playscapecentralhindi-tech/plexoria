@@ -190,10 +190,17 @@ export default function VideoPlayer({
       setIsLoadingStream(true);
       setStreamError(null);
       try {
+        // Detect preferred dub from user preference in localStorage
+        let preferredDub = "";
+        try {
+          preferredDub = localStorage.getItem("plexoria_preferred_dub") || "";
+        } catch (e) {}
+        const dubParam = preferredDub ? `&dub=${encodeURIComponent(preferredDub)}` : "";
+
         const res = await fetch(
           isPhpDeploy
-            ? `/api/moviebox/play/index.php?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&imdbId=${encodeURIComponent(imdbId || "")}&_t=${Date.now()}`
-            : `/api/moviebox/play?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&imdbId=${encodeURIComponent(imdbId || "")}&_t=${Date.now()}`
+            ? `/api/moviebox/play/index.php?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&imdbId=${encodeURIComponent(imdbId || "")}&_t=${Date.now()}${dubParam}`
+            : `/api/moviebox/play?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&imdbId=${encodeURIComponent(imdbId || "")}&_t=${Date.now()}${dubParam}`
         );
         if (!res.ok) {
           let errMsg = "Failed to load Plexoria stream index";
@@ -221,8 +228,18 @@ export default function VideoPlayer({
         setCaptions(data.captions || []);
 
         const languages = Array.from(new Set(streams.map((s: any) => s.language))) as string[];
+        // Priority order: preferred dub > Hindi Dub > Tamil Dub > Telugu Dub > Multi Audio > English SUB > first available
         let defaultLang = languages[0];
-        if (languages.includes("English SUB")) {
+        let preferredDubLang = "";
+        try { preferredDubLang = localStorage.getItem("plexoria_preferred_dub") || ""; } catch (e) {}
+        const preferredLangFull = languages.find(l => preferredDubLang && l.toLowerCase().includes(preferredDubLang.toLowerCase()));
+        if (preferredLangFull) {
+          defaultLang = preferredLangFull;
+        } else if (languages.find(l => l === "Hindi Dub")) {
+          defaultLang = "Hindi Dub";
+        } else if (languages.find(l => l === "Multi Audio")) {
+          defaultLang = "Multi Audio";
+        } else if (languages.find(l => l === "English SUB")) {
           defaultLang = "English SUB";
         }
         setSelectedLanguage(defaultLang);
