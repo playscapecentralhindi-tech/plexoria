@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Plexoria API version: 1.0.4 - Cache disabled, scored matching
+// Plexoria API version: 1.0.5 - Fixed timeouts, stream URL fields, multi-result matching
 export const dynamic = "force-dynamic";
 
 const API_BASE = "https://h5-api.aoneroom.com/wefeed-h5api-bff";
@@ -22,9 +22,10 @@ interface TokenData {
 const tokenCache = new Map<string, TokenData>();
 
 const playCache = new Map<string, { data: any; expiry: number }>();
-const PLAY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL to prevent URL expiration
+const PLAY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 5000): Promise<Response> {
+// FIX #1: Increased timeout from 5s to 15s — MovieBox API is slow
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -40,7 +41,6 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
   }
 }
 
-// Fetch and cache the guest bearer token by client IP (geographic region)
 async function getBearerToken(clientIp?: string | null): Promise<string> {
   const now = Date.now();
   const cacheKey = clientIp || "default";
@@ -50,9 +50,7 @@ async function getBearerToken(clientIp?: string | null): Promise<string> {
   }
 
   try {
-    const headers: Record<string, string> = {
-      ...DEFAULT_HEADERS,
-    };
+    const headers: Record<string, string> = { ...DEFAULT_HEADERS };
     if (clientIp) {
       headers["X-Forwarded-For"] = clientIp;
       headers["X-Real-IP"] = clientIp;
@@ -61,7 +59,7 @@ async function getBearerToken(clientIp?: string | null): Promise<string> {
     const res = await fetchWithTimeout(`${API_BASE}/home?host=moviebox.ph`, {
       method: "GET",
       headers,
-    });
+    }, 10000);
 
     const xUser = res.headers.get("x-user");
     let token: string | null = null;
@@ -78,13 +76,11 @@ async function getBearerToken(clientIp?: string | null): Promise<string> {
     if (!token) {
       const setCookie = res.headers.get("set-cookie") || "";
       const match = setCookie.match(/token=([^;]+)/);
-      if (match) {
-        token = match[1];
-      }
+      if (match) token = match[1];
     }
 
     if (token) {
-      tokenCache.set(cacheKey, { token, expiry: now + 15 * 60 * 1000 }); // Cache for 15 minutes
+      tokenCache.set(cacheKey, { token, expiry: now + 15 * 60 * 1000 });
       return token;
     }
   } catch (error) {
@@ -94,7 +90,6 @@ async function getBearerToken(clientIp?: string | null): Promise<string> {
   return "";
 }
 
-// Make an authenticated get request with client IP forwarding
 async function makeGetRequest(url: string, token: string, clientIp?: string | null) {
   const headers: Record<string, string> = {
     ...DEFAULT_HEADERS,
@@ -105,19 +100,11 @@ async function makeGetRequest(url: string, token: string, clientIp?: string | nu
     headers["X-Real-IP"] = clientIp;
   }
 
-  const res = await fetchWithTimeout(url, {
-    method: "GET",
-    headers,
-  });
-
-  if (!res.ok) {
-    throw new Error(`API returned status ${res.status}`);
-  }
-
+  const res = await fetchWithTimeout(url, { method: "GET", headers });
+  if (!res.ok) throw new Error(`API returned status ${res.status}`);
   return res.json();
 }
 
-// Make an authenticated post request with client IP forwarding
 async function makePostRequest(url: string, payload: any, token: string, clientIp?: string | null) {
   const headers: Record<string, string> = {
     ...DEFAULT_HEADERS,
@@ -133,11 +120,7 @@ async function makePostRequest(url: string, payload: any, token: string, clientI
     headers,
     body: JSON.stringify(payload),
   });
-
-  if (!res.ok) {
-    throw new Error(`API returned status ${res.status}`);
-  }
-
+  if (!res.ok) throw new Error(`API returned status ${res.status}`);
   return res.json();
 }
 
@@ -146,7 +129,7 @@ function cleanTitle(str: string): string {
     .toLowerCase()
     .replace(/\[[^\]]+\]/g, "")
     .replace(/\([^)]+\)/g, "")
-    .replace(/\b(hindi|tamil|telugu|english|sub|dub|dubbed|season|s\d+|e\d+|s\d+\-s\d+)\b/gi, "")
+    .replace(/\b(hindi|tamil|telugu|english|sub|dub|dubbed|season|s\d+|e\d+|s\d+-s\d+)\b/gi, "")
     .replace(/[^a-z0-9]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -179,31 +162,23 @@ function getMatchScore(itemTitle: string, targetTitle: string, requestedDub?: st
     let score = 50;
     const lenDiff = Math.abs(cleanItem.length - cleanTarget.length);
     score -= lenDiff * 2;
-    
-    if (requestedDub && rawItemTitle.includes(requestedDub.toLowerCase())) {
-      score += 10;
-    }
+    if (requestedDub && rawItemTitle.includes(requestedDub.toLowerCase())) score += 10;
     return Math.max(score, 10);
   }
 
-  if (rawItemTitle.includes(rawTargetTitle)) {
-    return 5;
-  }
+  if (rawItemTitle.includes(rawTargetTitle)) return 5;
 
   return 0;
 }
 
 function parseLanguageFromTitle(title: string): { audioLanguage: string; isDubbed: boolean; isOriginal: boolean; isMultiAudio: boolean; language: string } {
   const t = title.toLowerCase();
-  
-  // 1. Detect multi-audio
+
   let isMultiAudio = t.includes("multi audio") || t.includes("dual audio") || t.includes("multi-audio") || t.includes("multi-lang") || t.includes("multi language");
-  
-  // 2. Parse language
+
   let audioLanguage = "";
-  
-  // Parse bracketed text, e.g. [Spanish] or (French)
-  const bracketRegex = /[\[\()]([a-zA-Z\s]+)[\]\)]/g;
+
+  const bracketRegex = /[\[\(]([a-zA-Z\s]+)[\]\)]/g;
   let matches;
   while ((matches = bracketRegex.exec(title)) !== null) {
     const val = matches[1].trim();
@@ -215,7 +190,6 @@ function parseLanguageFromTitle(title: string): { audioLanguage: string; isDubbe
     }
   }
 
-  // Keyword match fallback
   const languages = [
     { name: "Hindi", keywords: ["hindi", "hin"] },
     { name: "Tamil", keywords: ["tamil", "tam"] },
@@ -246,11 +220,8 @@ function parseLanguageFromTitle(title: string): { audioLanguage: string; isDubbe
     }
   }
 
-  if (!audioLanguage) {
-    audioLanguage = "English"; // Default fallback
-  }
+  if (!audioLanguage) audioLanguage = "English";
 
-  // 3. Dub vs Sub
   let isDubbed = false;
   if (t.includes("dub") || t.includes("dubbed")) {
     isDubbed = true;
@@ -264,7 +235,6 @@ function parseLanguageFromTitle(title: string): { audioLanguage: string; isDubbe
     isDubbed = false;
   }
 
-  // 4. Group name
   let language = "";
   if (isMultiAudio) {
     language = "Multi Audio";
@@ -277,6 +247,11 @@ function parseLanguageFromTitle(title: string): { audioLanguage: string; isDubbe
   }
 
   return { audioLanguage, isDubbed, isOriginal, isMultiAudio, language };
+}
+
+// FIX #3: Extract stream URL from all possible field names MovieBox uses
+function extractStreamUrl(s: any): string | null {
+  return s.url || s.streamUrl || s.cdnUrl || s.videoUrl || s.playUrl || s.src || null;
 }
 
 export async function GET(req: NextRequest) {
@@ -297,7 +272,7 @@ export async function GET(req: NextRequest) {
   const cached = playCache.get(cacheKey);
   const now = Date.now();
   if (cached && cached.expiry > now) {
-    console.log(`[Play Cache Hit] Serving aggregated play data: ${cacheKey}`);
+    console.log(`[Play Cache Hit] ${cacheKey}`);
     return NextResponse.json(cached.data, {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
@@ -313,17 +288,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Failed to authenticate with provider backend" }, { status: 502 });
     }
 
+    // FIX #2 & #4: Don't search by IMDb ID (MovieBox doesn't support it).
+    // Build clean keyword list from title only.
     const cleanedTitle = title.replace(/[:\-]/g, " ").replace(/\s+/g, " ").trim();
-    const keywordsToTry = [];
+    const keywordsToTry: string[] = [title];
+    if (cleanedTitle !== title) keywordsToTry.push(cleanedTitle);
 
-    if (imdbId && imdbId.startsWith("tt")) {
-      keywordsToTry.push(imdbId);
+    // Also try first word of title for short-name fallback (e.g. "Avatar" for "Avatar: The Way of Water")
+    const firstWord = cleanedTitle.split(" ")[0];
+    if (firstWord && firstWord.length > 3 && !keywordsToTry.includes(firstWord)) {
+      keywordsToTry.push(firstWord);
     }
-    keywordsToTry.push(title);
-    if (cleanedTitle !== title) {
-      keywordsToTry.push(cleanedTitle);
-    }
-    keywordsToTry.push(`${title} Hindi`, `${title} Tamil`, `${title} Telugu`);
 
     const allSearchItems: any[] = [];
     const seenIds = new Set<number>();
@@ -334,7 +309,7 @@ export async function GET(req: NextRequest) {
         const searchRes = await makePostRequest(`${API_BASE}/subject/search`, {
           keyword,
           page: 1,
-          perPage: 15
+          perPage: 20
         }, token, clientIp);
 
         const items = searchRes?.data?.items || searchRes?.data?.list || [];
@@ -346,26 +321,36 @@ export async function GET(req: NextRequest) {
           }
         }
       } catch (err) {
-        console.error(`Search failed for keyword ${keyword}:`, err);
+        console.error(`Search failed for keyword "${keyword}":`, err);
       }
     }
 
+    if (allSearchItems.length === 0) {
+      return NextResponse.json({ error: "No results found in streaming database for this title" }, { status: 404 });
+    }
+
+    // Score and pick top candidates (up to 5) to try streaming from
     const scoredItems = allSearchItems
       .map((item) => ({ item, score: getMatchScore(item.title || "", title, null) }))
       .sort((a, b) => b.score - a.score);
 
-    const matchedItems: typeof allSearchItems = [];
-    if (scoredItems.length > 0 && scoredItems[0].score > 0) {
-      matchedItems.push(scoredItems[0].item);
-    } else if (allSearchItems.length > 0 && shareSignificantWord(allSearchItems[0].title || "", title)) {
-      matchedItems.push(allSearchItems[0]);
+    // FIX #1: Take up to 5 top-scored items, not just 1. Fallback chain gives resilience.
+    let matchedItems: typeof allSearchItems = [];
+    if (scoredItems[0].score > 0) {
+      matchedItems = scoredItems.slice(0, 5).filter(s => s.score > 0).map(s => s.item);
+    } else {
+      // Zero-score fallback: try first item only if significant word matches
+      const fallbackItem = allSearchItems[0];
+      if (shareSignificantWord(fallbackItem.title || "", title)) {
+        matchedItems = [fallbackItem];
+      }
     }
 
     if (matchedItems.length === 0) {
       return NextResponse.json({ error: "No matching titles found in streaming database" }, { status: 404 });
     }
 
-    // Concurrent Stream Resolver
+    // Concurrent Stream Resolver — try all matched items in parallel
     const streamsAndCaptions = await Promise.all(matchedItems.map(async (item) => {
       const subjectId = item.subjectId;
       const detailPath = item.detailPath;
@@ -378,9 +363,7 @@ export async function GET(req: NextRequest) {
           if (seasonsList.length > 0) {
             const targetIndex = Math.min(Math.max(season - 1, 0), seasonsList.length - 1);
             const mappedSeason = seasonsList[targetIndex].se;
-            if (mappedSeason) {
-              actualSeason = mappedSeason;
-            }
+            if (mappedSeason) actualSeason = mappedSeason;
           }
         } catch (err) {
           console.error(`Failed to map season for item ${item.title}:`, err);
@@ -401,14 +384,22 @@ export async function GET(req: NextRequest) {
             "Authorization": `Bearer ${token}`,
             ...(clientIp ? { "X-Forwarded-For": clientIp, "X-Real-IP": clientIp } : {})
           }
-        });
-        if (!playRes.ok) return null;
+        }, 15000);
+
+        if (!playRes.ok) {
+          console.error(`Play request returned ${playRes.status} for "${item.title}"`);
+          return null;
+        }
         const playData = await playRes.json();
         const streamsData = playData?.data || {};
 
-        const rawStreams = streamsData.streams || [];
-        const hlsList = streamsData.hls || [];
-        const dashList = streamsData.dash || [];
+        // FIX #3: Check all possible stream container keys from MovieBox API
+        const rawStreams: any[] = streamsData.streams || streamsData.videoList || streamsData.videoStreams || [];
+        const hlsList: any[] = streamsData.hls || streamsData.hlsList || streamsData.hlsStreams || [];
+        const dashList: any[] = streamsData.dash || streamsData.dashList || [];
+
+        // Log what we got for debugging
+        console.log(`[Play] "${item.title}" → streams:${rawStreams.length}, hls:${hlsList.length}, dash:${dashList.length}`);
 
         let captions: any[] = [];
         let streamId = null;
@@ -431,7 +422,7 @@ export async function GET(req: NextRequest) {
                 "Authorization": `Bearer ${token}`,
                 ...(clientIp ? { "X-Forwarded-For": clientIp, "X-Real-IP": clientIp } : {})
               }
-            });
+            }, 8000);
             if (capRes.ok) {
               const capData = await capRes.json();
               const list = capData?.data?.captions || capData?.data || [];
@@ -449,15 +440,9 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        return {
-          item,
-          rawStreams,
-          hlsList,
-          dashList,
-          captions
-        };
+        return { item, rawStreams, hlsList, dashList, captions };
       } catch (err) {
-        console.error(`Play request failed for item ${item.title}:`, err);
+        console.error(`Play request failed for item "${item.title}":`, err);
         return null;
       }
     }));
@@ -478,9 +463,11 @@ export async function GET(req: NextRequest) {
         ...rawStreams.map((s: any) => ({ ...s, streamFormat: "MP4" })),
         ...hlsList.map((s: any) => ({ ...s, streamFormat: "HLS" })),
         ...dashList.map((s: any) => ({ ...s, streamFormat: "DASH" }))
-      ].filter((s: any) => s.url);
+      // FIX #3: Use extractStreamUrl to check all possible URL field names
+      ].filter((s: any) => !!extractStreamUrl(s));
 
       combinedList.forEach((s: any, idx: number) => {
+        const streamUrl = extractStreamUrl(s)!;
         const resolution = s.resolutions ? `${s.resolutions}p` : `${s.resolution || "1080p"}`;
         const cleanRes = resolution.replace(/p$/, "");
         const resVal = parseInt(cleanRes) || 720;
@@ -499,7 +486,7 @@ export async function GET(req: NextRequest) {
           resolution: `${resVal}p`,
           codec: s.codecName || "h264",
           hdr: s.codecName?.toLowerCase()?.includes("hevc") || false,
-          streamUrl: s.url,
+          streamUrl,
           health: "active",
           qualityScore: score,
           isDubbed: parsed.isDubbed,
@@ -514,7 +501,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "No free streaming sources available for this title" }, { status: 404 });
     }
 
-    // Dynamic availableDubs list for legacy UI support
     const availableDubs = Array.from(new Set(normalizedStreams.map(s => s.language))).map((lang, idx) => ({
       id: idx,
       name: `Plexoria Server (${lang})`,
@@ -532,9 +518,7 @@ export async function GET(req: NextRequest) {
 
     if (playCache.size >= 100) {
       const oldestKey = playCache.keys().next().value;
-      if (oldestKey !== undefined) {
-        playCache.delete(oldestKey);
-      }
+      if (oldestKey !== undefined) playCache.delete(oldestKey);
     }
     playCache.set(cacheKey, { data: responseData, expiry: Date.now() + PLAY_CACHE_TTL });
 
