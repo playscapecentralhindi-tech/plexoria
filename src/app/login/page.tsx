@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { LogIn, UserPlus } from "lucide-react";
 import { motion } from "framer-motion";
 import { FadeUp } from "@/components/AnimatedComponents";
@@ -124,6 +125,15 @@ export default function LoginPage() {
           >
             {isLogin ? "Sign up" : "Sign in"}
           </button>
+        </div>
+
+        <div className="border-t border-white/5 pt-4 text-center">
+          <Link
+            href="/"
+            className="text-xs text-slate-500 hover:text-slate-300 transition-colors font-medium"
+          >
+            Continue browsing without account →
+          </Link>
         </div>
       </FadeUp>
     </div>

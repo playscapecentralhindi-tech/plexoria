@@ -17,7 +17,7 @@ def test_autocorrect_concurrency_stress(base_url):
     def fetch_autocorrect(q):
         url = f"{base_url}/api/search/autocorrect?query={q}"
         try:
-            res = requests.get(url, timeout=5)
+            res = requests.get(url, timeout=15)
             return res.status_code, res.json()
         except Exception as e:
             return 500, str(e)

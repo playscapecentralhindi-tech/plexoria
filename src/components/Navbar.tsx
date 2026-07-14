@@ -2,19 +2,22 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Menu, Search, Bookmark, X, Film, Compass, Play, Star } from "lucide-react";
 import { tmdb } from "@/lib/tmdb";
 import { motion, AnimatePresence } from "framer-motion";
 import { dropdownVariants, drawerLeftVariants } from "@/lib/animations";
+import GlassCommandPalette from "@/components/GlassCommandPalette";
 
 export default function Navbar() {
   const router = useRouter();
+  const pathname = usePathname();
   const [searchVal, setSearchVal] = useState("");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const lastScrollY = useRef(0);
   
   // Autocomplete state
@@ -52,8 +55,7 @@ export default function Navbar() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
         e.preventDefault();
-        setIsSearchExpanded(true);
-        setTimeout(() => searchInputRef.current?.focus(), 100);
+        setPaletteOpen(true);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -115,7 +117,7 @@ export default function Navbar() {
         role="navigation"
         aria-label="Primary Navigation"
         className={`fixed top-0 inset-x-0 w-full z-50 transition-all duration-300 select-none ${
-          isScrolled ? "navbar-glass py-2" : "bg-gradient-to-b from-black/80 to-transparent py-4"
+          isScrolled ? "glass-nav py-2" : "bg-gradient-to-b from-black/80 to-transparent py-4"
         }`}
         style={{ transform: isVisible ? "translateY(0)" : "translateY(-100%)" }}
       >
@@ -148,11 +150,11 @@ export default function Navbar() {
 
             {/* Navigation links - Desktop */}
             <div className="hidden lg:flex items-center gap-6 text-sm font-medium text-gray-300" role="menubar">
-              <Link href="/" className="hover:text-white transition-colors focus:outline-none" role="menuitem">Home</Link>
-              <Link href="/discover" className="hover:text-white transition-colors focus:outline-none" role="menuitem">Discover</Link>
-              <Link href="/free" className="hover:text-red-400 transition-colors text-red-500 font-semibold focus:outline-none" role="menuitem">Free Channels</Link>
-              <Link href="/watchlist" className="hover:text-white transition-colors flex items-center gap-1 focus:outline-none" role="menuitem">
-                <Bookmark size={14} /> Library
+              <Link href="/" className={`hover:text-white transition-colors focus:outline-none ${pathname === "/" ? "text-white font-semibold" : ""}`} role="menuitem">Home</Link>
+              <Link href="/discover" className={`hover:text-white transition-colors focus:outline-none ${pathname === "/discover" ? "text-white font-semibold" : ""}`} role="menuitem">Discover</Link>
+              <Link href="/free" className={`hover:text-red-400 transition-colors font-semibold focus:outline-none ${pathname === "/free" ? "text-red-400" : "text-red-500"}`} role="menuitem">Free Channels</Link>
+              <Link href="/watchlist" className={`hover:text-white transition-colors flex items-center gap-1 focus:outline-none ${pathname === "/watchlist" ? "text-white font-semibold" : ""}`} role="menuitem">
+                <Bookmark size={14} /> My List
               </Link>
             </div>
 
@@ -184,7 +186,7 @@ export default function Navbar() {
                 />
                 <button 
                   type="button"
-                  onClick={isSearchExpanded && searchVal.trim() ? handleSearchSubmit : toggleSearch}
+                  onClick={() => setPaletteOpen(true)}
                   className="text-gray-400 hover:text-white transition-colors p-1"
                 >
                   <Search size={16} />
@@ -283,7 +285,7 @@ export default function Navbar() {
               initial="hidden"
               animate="visible"
               exit="exit"
-              className="absolute top-0 left-0 h-full w-72 md:w-80 liquid-glass-heavy shadow-2xl p-6 flex flex-col gap-8 z-50"
+              className="absolute top-0 left-0 h-full w-72 md:w-80 glass-heavy shadow-2xl p-6 flex flex-col gap-8 z-50"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-4">
@@ -339,7 +341,7 @@ export default function Navbar() {
                   <ul className="space-y-1.5 text-sm font-medium">
                     <li>
                       <Link href="/watchlist" onClick={() => setIsMenuOpen(false)} className="text-gray-300 hover:text-white hover:pl-1 transition-all block py-1">
-                        My Streaming Library
+                        My List
                       </Link>
                     </li>
                     <li>
@@ -361,6 +363,8 @@ export default function Navbar() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <GlassCommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </>
   );
 }

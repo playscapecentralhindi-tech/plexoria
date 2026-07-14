@@ -120,7 +120,7 @@ export default function Hero() {
             initial="hidden"
             animate="visible"
             exit="exit"
-            className="max-w-xl md:max-w-2xl flex flex-col items-start gap-4"
+            className="max-w-xl md:max-w-2xl flex flex-col items-start gap-4 p-6 md:p-8 rounded-2xl glass-hero"
           >
             {/* Redesigned Metadata Row */}
             <motion.div 
@@ -192,14 +192,14 @@ export default function Hero() {
               className="flex items-center gap-4 pt-2"
             >
               <Link
-                href={"/" + (item.media_type || "movie") + "?id=" + item.id}
-                className="flex items-center gap-2 bg-[#EF4444] hover:bg-[#DC2626] text-white px-7 py-3 rounded-xl text-sm font-black transition-all hover:scale-[1.03] active:scale-98 duration-200 shadow-lg shadow-red-500/15"
+                href={"/" + (item.media_type || "movie") + "?id=" + item.id + "&autoplay=1"}
+                className="glass-btn-primary glass-ripple flex items-center gap-2 text-white px-7 py-3 rounded-xl text-sm font-black transition-all hover:scale-[1.03] active:scale-[0.98] duration-200"
               >
                 <Play size={16} className="fill-current ml-0.5" /> Watch Now
               </Link>
               <Link
                 href={"/" + (item.media_type || "movie") + "?id=" + item.id}
-                className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/5 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all backdrop-blur-sm"
+                className="glass-btn-secondary glass-ripple flex items-center gap-2 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all"
               >
                 <Info size={15} /> More Info
               </Link>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { tmdb, MediaType } from "@/lib/tmdb";
 import Link from "next/link";
@@ -10,11 +10,17 @@ import VideoPlayer from "@/components/VideoPlayer";
 import MovieCard from "./MovieCard";
 import { useSearchParams } from "next/navigation";
 import { FadeIn, FadeUp, StaggerContainer, StaggerItem } from "@/components/AnimatedComponents";
+import MediaDetailSkeleton from "@/components/MediaDetailSkeleton";
+import ErrorCard from "@/components/ErrorCard";
 
 export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; id: string }) {
   const searchParams = useSearchParams();
   const [activeSeason, setActiveSeason] = useState(1);
   const [activeEpisode, setActiveEpisode] = useState(1);
+  const [autoplayOnMount, setAutoplayOnMount] = useState(
+    searchParams.get("autoplay") === "1"
+  );
+  const playerRef = useRef<HTMLDivElement>(null);
   const [watchedProgress, setWatchedProgress] = useState<{ [key: string]: number }>({});
   const [isFavorited, setIsFavorited] = useState(false);
   const [isAddedToList, setIsAddedToList] = useState(false);
@@ -43,7 +49,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
     }
   }, [activeEpisode]);
 
-  const { data: media, isLoading, error } = useQuery({
+  const { data: media, isLoading, error, refetch } = useQuery({
     queryKey: ["details", mediaType, id],
     queryFn: () => tmdb.getDetails(mediaType, id),
   });
@@ -81,6 +87,15 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
     }
   }, [media]);
 
+  // Auto-scroll and open player when ?autoplay=1
+  useEffect(() => {
+    if (autoplayOnMount && media && playerRef.current) {
+      setTimeout(() => {
+        playerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 400);
+      setAutoplayOnMount(false);
+    }
+  }, [media, autoplayOnMount]);
 
 
   const { data: seasonDetails, isLoading: isSeasonLoading } = useQuery({
@@ -90,18 +105,21 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
   });
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
-        <div className="w-12 h-12 rounded-full border-4 border-[#EF4444]/25 border-t-[#EF4444] animate-spin"></div>
-      </div>
-    );
+    return <MediaDetailSkeleton />;
   }
 
   if (error || !media) {
+    const errMessage = error instanceof Error
+      ? error.message
+      : "This title is temporarily unavailable. Please try again.";
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center text-[#EF4444] bg-black gap-2">
-        <span>Failed to load details for this title.</span>
-        <Link href="/" className="px-4 py-2 bg-white/5 border border-white/5 rounded-xl text-white text-xs hover:bg-white/10 transition-colors">Back to Home</Link>
+      <div className="min-h-screen bg-[#0A0A0A]">
+        <ErrorCard
+          title="Title Unavailable"
+          message={errMessage}
+          onRetry={() => refetch()}
+          showHomeLink
+        />
       </div>
     );
   }
@@ -191,7 +209,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
       
       {/* Top Section: Video Player container (Full Width) */}
       {mediaType !== "person" && (
-        <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-2">
+        <div ref={playerRef} className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-2">
           <VideoPlayer
             mediaType={mediaType as "movie" | "tv"}
             id={id}
@@ -218,7 +236,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col gap-6">
         
         {/* Title, rating, genres & action row */}
-        <FadeUp className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-[#0A0A0F] border border-white/5 p-6 rounded-2xl w-full">
+        <FadeUp className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 glass-card p-6 rounded-2xl w-full hover:scale-100 hover:translate-y-0">
           <div className="space-y-3 flex-1">
             <div className="flex flex-wrap items-baseline gap-3.5">
               <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
@@ -315,7 +333,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
 
         {/* TV Episodes list */}
         {mediaType === "tv" && (
-          <FadeUp className="space-y-4 bg-[#0A0A0F]/50 border border-white/5 p-6 rounded-2xl w-full">
+          <FadeUp className="space-y-4 glass-card p-6 rounded-2xl w-full hover:scale-100 hover:translate-y-0">
             <div className="flex items-center justify-between border-b border-white/5 pb-3">
               <h2 className="text-sm md:text-base font-extrabold text-white flex items-center gap-2 uppercase tracking-wider">
                 📺 Episode Guide
@@ -323,7 +341,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
               
               {/* Season switcher */}
               {media.seasons?.length > 0 && (
-                <div className="flex items-center gap-2 bg-white/5 border border-white/5 rounded-xl px-3 py-1.5">
+                <div className="flex items-center gap-2 glass border border-white/5 rounded-xl px-3 py-1.5">
                   <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider">Season:</span>
                   <select
                     value={activeSeason}
@@ -365,7 +383,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                     className={`relative w-72 md:w-80 flex flex-col gap-3 p-3 rounded-xl border text-left transition-all duration-300 flex-shrink-0 group ${
                       isCurrent
                         ? "bg-[#0A0A0F] border-[#EF4444] shadow-lg shadow-[#EF4444]/15"
-                        : "bg-white/2 hover:bg-[#0A0A0F] border-white/5 hover:border-white/10"
+                        : "glass-card border-white/5 hover:border-white/10"
                     }`}
                   >
                     <div className="aspect-video w-full rounded-lg overflow-hidden relative border border-white/5 bg-white/5">
@@ -486,7 +504,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
             )}
 
             {/* Comments segment */}
-            <FadeUp className="bg-[#0A0A0F] border border-white/5 p-6 rounded-2xl space-y-4 w-full">
+            <FadeUp className="glass-card p-6 rounded-2xl space-y-4 w-full hover:scale-100 hover:translate-y-0">
               <h3 className="font-extrabold text-sm text-white uppercase tracking-wider border-b border-white/5 pb-2">
                 💬 User Reviews & Comments
               </h3>
@@ -505,7 +523,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                 </div>
 
                 <div className="flex gap-3 border-b border-white/5 pb-3">
-                  <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs">M</div>
+                  <div className="w-8 h-8 rounded-full bg-[#EF4444]/20 border border-[#EF4444]/40 text-[#EF4444] flex items-center justify-center font-bold text-xs">M</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-white">Maria S.</span>
@@ -540,7 +558,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
           <div className="w-full lg:w-80 shrink-0 space-y-6">
             
             {/* Synopsis Card */}
-            <FadeUp className="bg-[#0A0A0F] border border-white/5 p-6 rounded-2xl space-y-3 w-full">
+            <FadeUp className="glass-card p-6 rounded-2xl space-y-3 w-full hover:scale-100 hover:translate-y-0">
               <h3 className="font-extrabold text-xs text-white uppercase tracking-wider border-b border-white/5 pb-2">
                 📖 Synopsis
               </h3>
@@ -550,7 +568,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
             </FadeUp>
 
             {/* Metadata technical block */}
-            <FadeUp className="bg-[#0A0A0F] border border-white/5 p-6 rounded-2xl space-y-4 text-[11px] w-full" delay={0.15}>
+            <FadeUp className="glass-card p-6 rounded-2xl space-y-4 text-[11px] w-full hover:scale-100 hover:translate-y-0" delay={0.15}>
               <h3 className="font-extrabold text-xs text-white uppercase tracking-wider border-b border-white/5 pb-2">Metadata Details</h3>
               
               <div className="flex justify-between items-center py-1 border-b border-white/5">

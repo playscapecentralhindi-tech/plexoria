@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Star, Play } from "lucide-react";
+import { Star, Play, Bookmark, Plus } from "lucide-react";
 import { motion } from "framer-motion";
 import { MediaItem } from "@/lib/tmdb";
 
@@ -17,16 +17,30 @@ export default function MovieCard({ item, mediaType }: MovieCardProps) {
   const titleText = item.title || item.name || "Untitled";
   const year = (item.release_date || item.first_air_date || "").substring(0, 4);
 
+  const handleAddToList = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const stored = localStorage.getItem("plexoria_watchlist") || "{}";
+      const map = JSON.parse(stored);
+      const key = `${item.id}_${targetType}`;
+      if (!map[key]) {
+        map[key] = { id: item.id, title: titleText, name: titleText, poster_path: item.poster_path, backdrop_path: item.backdrop_path, media_type: targetType, vote_average: item.vote_average, addedAt: Date.now() };
+        localStorage.setItem("plexoria_watchlist", JSON.stringify(map));
+      }
+    } catch {}
+  };
+
   return (
     <Link href={`/${targetType}?id=${item.id}`} className="block select-none shrink-0 w-36 md:w-48 snap-start">
       <motion.div
-        whileHover={{ 
+        whileHover={{
           scale: 1.04,
           y: -6,
-          boxShadow: "0 20px 40px rgba(0, 0, 0, 0.8), 0 0 20px rgba(239, 68, 68, 0.15)"
+          boxShadow: "0 24px 48px rgba(0,0,0,0.85), 0 0 28px rgba(239,68,68,0.12), inset 0 1px 0 rgba(255,255,255,0.08)"
         }}
         transition={{ type: "spring", stiffness: 380, damping: 24 }}
-        className="relative aspect-[2/3] w-full rounded-xl overflow-hidden bg-[#050508] border border-white/5 card-sweep group shadow-xl"
+        className="relative aspect-[2/3] w-full rounded-xl overflow-hidden bg-[#050508] border border-white/5 card-sweep group shadow-xl transition-[border-color] duration-300 group-hover:border-white/10"
       >
         {/* Poster Image */}
         {item.poster_path ? (
@@ -39,13 +53,14 @@ export default function MovieCard({ item, mediaType }: MovieCardProps) {
               alt={titleText}
               onLoad={() => setImgLoaded(true)}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              loading="lazy"
             />
             {!imgLoaded && (
               <div className="absolute inset-0 bg-[#050508] animate-shimmer"></div>
             )}
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center w-full h-full text-center p-4 bg-gradient-to-b from-[#0F0F16] to-[#050508] border border-white/5 relative">
+          <div className="flex flex-col items-center justify-center w-full h-full text-center p-4 bg-gradient-to-b from-[#0F0F16] to-[#050508] relative">
             <span className="text-[#EF4444] text-[9px] font-black uppercase tracking-widest mb-1.5 opacity-65">Plexoria</span>
             <span className="text-[#F8FAFC] font-extrabold text-[10px] leading-snug line-clamp-3 px-1">{titleText}</span>
             <div className="absolute bottom-4 text-[8px] text-slate-500 font-bold uppercase tracking-wider">No Poster</div>
@@ -53,44 +68,49 @@ export default function MovieCard({ item, mediaType }: MovieCardProps) {
         )}
 
         {/* Play Icon Overlay Hover Sweep */}
-        <div className="absolute inset-0 bg-black/45 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
+        <div className="glass-ripple absolute inset-0 bg-black/45 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
           <div className="w-11 h-11 rounded-full bg-[#EF4444] text-white flex items-center justify-center shadow-lg shadow-red-600/25 transform scale-75 group-hover:scale-100 transition-transform duration-300">
             <Play size={18} className="fill-current ml-0.5" />
           </div>
         </div>
 
+        {/* Quick add to list button — top-right on hover */}
+        <button
+          onClick={handleAddToList}
+          className="absolute top-2 right-2 z-30 p-1.5 rounded-lg glass text-white opacity-0 group-hover:opacity-100 transition-all hover:text-[#EF4444] shadow-lg"
+          aria-label="Add to watchlist"
+        >
+          <Plus size={12} />
+        </button>
+
         {/* Corner Badge Top Left */}
         <div className="absolute top-2 left-2 z-20 flex flex-col gap-1">
           {year && (parseInt(year) >= 2025) && (
-            <span className="px-1.5 py-0.5 rounded bg-[#EF4444] text-[8px] font-black text-white shadow-md tracking-wider">
+            <span className="px-1.5 py-0.5 rounded-full bg-[#EF4444] text-[8px] font-black text-white shadow-md tracking-wider">
               NEW
             </span>
           )}
-          <span className="px-1.5 py-0.5 rounded bg-black/60 border border-white/5 backdrop-blur-sm text-[8px] font-bold text-[#F8FAFC] shadow-md tracking-wider">
+          <span className="px-1.5 py-0.5 rounded-full glass border border-white/10 text-[8px] font-bold text-[#F8FAFC] shadow-md tracking-wider">
             1080P
           </span>
-          <span className="px-1.5 py-0.5 rounded bg-white/10 border border-white/5 backdrop-blur-sm text-[7px] font-bold text-[#F8FAFC] shadow-md tracking-wider uppercase">
+          <span className="px-1.5 py-0.5 rounded-full glass border border-white/10 text-[7px] font-bold text-[#F8FAFC] shadow-md tracking-wider uppercase">
             MULTI
           </span>
         </div>
 
-        {/* Rating Gold Badge Top Right */}
+        {/* Rating badge — only shown when not hovering (hidden behind quick-add) */}
         {item.vote_average > 0 && (
-          <div className="absolute top-2 right-2 z-20 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-sm border border-white/5 flex items-center gap-0.5 text-[9px] font-extrabold text-[#F59E0B]">
+          <div className="absolute top-2 right-2 z-20 px-1.5 py-0.5 rounded-full glass border border-white/10 flex items-center gap-0.5 text-[9px] font-extrabold text-[#F59E0B] group-hover:opacity-0 transition-opacity duration-200">
             <Star size={9} fill="currentColor" /> {item.vote_average.toFixed(1)}
           </div>
         )}
 
-        {/* Dark Glass Overlay details block */}
-        <div className="absolute bottom-0 left-0 w-full p-2.5 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex flex-col gap-0.5 z-20">
-          <span className="text-xs font-semibold truncate text-[#F8FAFC] drop-shadow">
-            {titleText}
-          </span>
+        {/* Info gradient overlay */}
+        <div className="absolute bottom-0 left-0 w-full p-2.5 bg-gradient-to-t from-black/95 via-black/65 to-transparent flex flex-col gap-0.5 z-20">
+          <span className="text-xs font-semibold truncate text-[#F8FAFC] drop-shadow">{titleText}</span>
           <div className="flex items-center justify-between text-[10px] text-slate-400">
             <span>{year || "N/A"}</span>
-            <span className="uppercase text-[8px] font-bold tracking-wider px-1 bg-white/5 border border-white/5 rounded">
-              {targetType}
-            </span>
+            <span className="uppercase text-[8px] font-bold tracking-wider px-1 bg-white/5 border border-white/5 rounded">{targetType}</span>
           </div>
         </div>
       </motion.div>
@@ -152,7 +172,7 @@ export function LandscapeCard({ item, mediaType }: MovieCardProps) {
         )}
 
         {/* Play Icon Overlay */}
-        <div className="absolute inset-0 bg-black/45 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
+        <div className="glass-ripple absolute inset-0 bg-black/45 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
           <div className="w-10 h-10 rounded-full bg-[#EF4444] text-white flex items-center justify-center shadow-lg shadow-red-600/25 transform scale-75 group-hover:scale-100 transition-transform duration-300">
             <Play size={15} className="fill-current ml-0.5" />
           </div>
@@ -160,16 +180,16 @@ export function LandscapeCard({ item, mediaType }: MovieCardProps) {
 
         {/* Corner Badge */}
         <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5">
-          <span className="px-1.5 py-0.5 rounded bg-black/60 border border-white/5 backdrop-blur-sm text-[8px] font-bold text-[#F8FAFC] shadow-md tracking-wider">
+          <span className="px-1.5 py-0.5 rounded-full glass border border-white/10 text-[8px] font-bold text-[#F8FAFC] shadow-md tracking-wider">
             1080P
           </span>
-          <span className="px-1.5 py-0.5 rounded bg-white/10 border border-white/5 backdrop-blur-sm text-[7px] font-bold text-[#F8FAFC] shadow-md tracking-wider uppercase">
+          <span className="px-1.5 py-0.5 rounded-full glass border border-white/10 text-[7px] font-bold text-[#F8FAFC] shadow-md tracking-wider uppercase">
             MULTI
           </span>
         </div>
 
         {item.vote_average > 0 && (
-          <div className="absolute top-2 right-2 z-20 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-sm border border-white/5 flex items-center gap-0.5 text-[9px] font-extrabold text-[#F59E0B]">
+          <div className="absolute top-2 right-2 z-20 px-1.5 py-0.5 rounded-full glass border border-white/10 flex items-center gap-0.5 text-[9px] font-extrabold text-[#F59E0B]">
             <Star size={9} fill="currentColor" /> {item.vote_average.toFixed(1)}
           </div>
         )}
