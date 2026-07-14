@@ -236,13 +236,19 @@ export default function VideoPlayer({
         setCaptions(data.captions || []);
 
         const languages = Array.from(new Set(streams.map((s: any) => s.language))) as string[];
-        // Priority order: preferred dub > Hindi Dub > Tamil Dub > Telugu Dub > Multi Audio > English SUB > first available
+        // Priority order: preferred dub > Bengali Original > Bengali Dub > Hindi Dub > Tamil Dub > Telugu Dub > Multi Audio > English SUB > first available
         let defaultLang = languages[0];
         let preferredDubLang = "";
         try { preferredDubLang = localStorage.getItem("plexoria_preferred_dub") || ""; } catch (e) {}
         const preferredLangFull = languages.find(l => preferredDubLang && l.toLowerCase().includes(preferredDubLang.toLowerCase()));
         if (preferredLangFull) {
           defaultLang = preferredLangFull;
+        } else if (languages.find(l => l === "Bengali Original")) {
+          defaultLang = "Bengali Original";
+        } else if (languages.find(l => l === "Bengali Dub")) {
+          defaultLang = "Bengali Dub";
+        } else if (languages.find(l => l.toLowerCase().includes("bengali"))) {
+          defaultLang = languages.find(l => l.toLowerCase().includes("bengali"))!;
         } else if (languages.find(l => l === "Hindi Dub")) {
           defaultLang = "Hindi Dub";
         } else if (languages.find(l => l === "Multi Audio")) {

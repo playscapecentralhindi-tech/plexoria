@@ -515,7 +515,7 @@ export async function GET(req: NextRequest) {
     const availableDubs = Array.from(new Set(normalizedStreams.map(s => s.language))).map((lang, idx) => ({
       id: idx,
       name: `Plexoria Server (${lang})`,
-      dub: lang.toLowerCase().includes("hindi") ? "hindi" : (lang.toLowerCase().includes("tamil") ? "tamil" : (lang.toLowerCase().includes("telugu") ? "telugu" : ""))
+      dub: lang.toLowerCase().includes("hindi") ? "hindi" : (lang.toLowerCase().includes("tamil") ? "tamil" : (lang.toLowerCase().includes("telugu") ? "telugu" : (lang.toLowerCase().includes("bengali") ? "bengali" : "")))
     }));
 
     const hls = normalizedStreams
