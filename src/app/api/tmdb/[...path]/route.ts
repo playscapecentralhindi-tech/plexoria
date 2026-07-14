@@ -5,6 +5,13 @@ const cache = new Map<string, { data: any; expiry: number }>();
 const LIST_CACHE_TTL = 10 * 60 * 1000; // 10 minutes cache TTL for lists
 const DETAIL_CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours cache TTL for details
 
+// Fallback constants ensure the proxy works even without env vars set on Vercel
+const TMDB_BASE = process.env.TMDB_API_BASE || "https://api.themoviedb.org/3";
+const TMDB_KEY =
+  process.env.TMDB_API_KEY ||
+  process.env.NEXT_PUBLIC_TMDB_API_KEY ||
+  "0abe7993c446da1294a11718bd3f78a0";
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { path: string[] } }
@@ -14,17 +21,15 @@ export async function GET(
   
   // Construct the TMDB API URL
   const endpoint = path.join("/");
-  const url = new URL(`${process.env.TMDB_API_BASE}/${endpoint}`);
+  const url = new URL(`${TMDB_BASE}/${endpoint}`);
   
   // Append original query parameters
   searchParams.forEach((value, key) => {
     url.searchParams.append(key, value);
   });
   
-  // Append TMDB v3 API Key
-  if (process.env.TMDB_API_KEY) {
-    url.searchParams.append("api_key", process.env.TMDB_API_KEY);
-  }
+  // Append TMDB v3 API Key — always use TMDB_KEY which has a hardcoded fallback
+  url.searchParams.append("api_key", TMDB_KEY);
 
   const cacheKey = url.toString();
   const cached = cache.get(cacheKey);
