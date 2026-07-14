@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { tmdb } from "@/lib/tmdb";
+import { tmdb, formatMovieBoxTitle } from "@/lib/tmdb";
 import Link from "next/link";
 import { Play, Info, Star } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -170,7 +170,7 @@ export default function Hero() {
               className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white leading-[1.05] select-text tracking-tight"
               style={{ textShadow: '0 2px 20px rgba(0,0,0,0.50)' }}
             >
-              {item.title || item.name}
+              {formatMovieBoxTitle(item.title || item.name, item.original_language, item.release_date || item.first_air_date)}
             </motion.h1>
 
             {/* Synopsis */}

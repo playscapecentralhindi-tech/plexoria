@@ -1,8 +1,8 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { tmdb } from "@/lib/tmdb";
+import { tmdb, formatMovieBoxTitle } from "@/lib/tmdb";
 import { Search, TrendingUp, Clock, X, Film, Tv } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -201,7 +201,12 @@ export default function GlassCommandPalette({ open, onClose }: GlassCommandPalet
                     <TrendingUp size={10} /> {listLabel}
                   </p>
                   {displayList.map((item: any, idx: number) => {
-                    const title = item.title || item.name || "";
+                    const originalTitle = item.title || item.name || "";
+                    const title = formatMovieBoxTitle(
+                      originalTitle,
+                      item.original_language,
+                      item.release_date || item.first_air_date
+                    );
                     const year = (item.release_date || item.first_air_date || "").substring(0, 4);
                     const isActive = idx === activeIndex;
                     return (

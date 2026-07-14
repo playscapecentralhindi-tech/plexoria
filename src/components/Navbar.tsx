@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { Menu, Search, Bookmark, X, Film, Compass, Play, Star } from "lucide-react";
-import { tmdb } from "@/lib/tmdb";
+import { tmdb, formatMovieBoxTitle } from "@/lib/tmdb";
 import { motion, AnimatePresence } from "framer-motion";
 import { dropdownVariants, drawerLeftVariants } from "@/lib/animations";
 import GlassCommandPalette from "@/components/GlassCommandPalette";
@@ -223,7 +223,7 @@ export default function Navbar() {
                           />
                           <div className="flex-1 min-w-0">
                             <h4 className="text-xs font-bold text-white truncate group-hover:text-[#EF4444] transition-colors">
-                              {item.title || item.name}
+                              {formatMovieBoxTitle(item.title || item.name, item.original_language, item.release_date || item.first_air_date)}
                             </h4>
                             <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1.5">
                               {year ? <span>{year}</span> : null}

@@ -6,6 +6,7 @@ export interface MediaItem {
   name?: string;
   original_title?: string;
   original_name?: string;
+  original_language?: string;
   overview: string;
   poster_path: string | null;
   backdrop_path: string | null;
@@ -132,3 +133,69 @@ export const tmdb = {
   getSeason: (tvId: string, seasonNumber: string) =>
     fetchWithRetry<any>(`/tv/${tvId}/season/${seasonNumber}`),
 };
+
+export function formatMovieBoxTitle(
+  title: string | undefined,
+  originalLang: string | undefined,
+  releaseDate?: string
+): string {
+  if (!title) return "";
+
+  // If title already has language tags or bracketed info, return it as is
+  if (title.includes("[") || title.includes("(")) {
+    return title;
+  }
+
+  const lang = (originalLang || "").toLowerCase();
+
+  // Determine if it needs a CAM tag (released in 2025/2026)
+  const isRecent = releaseDate ? (releaseDate.startsWith("2025") || releaseDate.startsWith("2026")) : false;
+  const camSuffix = isRecent ? "[CAM]" : "";
+
+  // 1. Bengali
+  if (lang === "bn") {
+    return `${title} [Bengali]`;
+  }
+  // 2. Hindi
+  if (lang === "hi") {
+    return `${title} [Hindi]`;
+  }
+  // 3. Tamil
+  if (lang === "ta") {
+    return `${title} [Tamil]`;
+  }
+  // 4. Telugu
+  if (lang === "te") {
+    return `${title} [Telugu]`;
+  }
+  // 5. Malayalam
+  if (lang === "ml") {
+    return `${title} [Malayalam]`;
+  }
+  // 6. Japanese
+  if (lang === "ja") {
+    if (title.toLowerCase().includes("naruto") || title.toLowerCase().includes("boruto")) {
+      return `${title} [Bengali]`;
+    }
+    return `${title} [Japanese]`;
+  }
+  // 7. Korean (Korean content on Moviebox is almost always dubbed in Hindi or original)
+  if (lang === "ko") {
+    return `${title} [Hindi]`;
+  }
+  // 8. Other foreign languages / Hollywood
+  if (lang !== "en" && lang !== "") {
+    return `${title} [Hindi]`;
+  }
+
+  // 9. Hollywood (English)
+  if (lang === "en") {
+    if (isRecent) {
+      return `${title}[CAM] [Hindi]`;
+    }
+    return `${title} [Hindi]`;
+  }
+
+  return title;
+}
+

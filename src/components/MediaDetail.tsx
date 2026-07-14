@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { tmdb, MediaType } from "@/lib/tmdb";
+import { tmdb, MediaType, formatMovieBoxTitle } from "@/lib/tmdb";
 import Link from "next/link";
 import Image from "next/image";
 import { Star, Tv, Sparkles, Share2, Heart, Bookmark, Play, Plus, ChevronRight } from "lucide-react";
@@ -291,7 +291,7 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
           <div className="space-y-3 flex-1">
             <div className="flex flex-wrap items-baseline gap-3.5">
               <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
-                {media.title || media.name}
+                {formatMovieBoxTitle(media.title || media.name, media.original_language, media.release_date || media.first_air_date)}
               </h1>
               {media.vote_average > 0 && (
                 <span className="flex items-center gap-1 text-xs text-[#F59E0B] font-extrabold">

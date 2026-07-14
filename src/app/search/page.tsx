@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { tmdb } from "@/lib/tmdb";
+import { tmdb, formatMovieBoxTitle } from "@/lib/tmdb";
 import { Search } from "lucide-react";
 import MovieCard, { SkeletonCard } from "@/components/MovieCard";
 import { motion, AnimatePresence } from "framer-motion";
@@ -259,7 +259,11 @@ function SearchContent() {
               className="absolute left-0 right-0 top-full mt-1.5 bg-black/90 border border-white/5 rounded-xl overflow-hidden shadow-2xl z-50 flex flex-col divide-y divide-white/5 backdrop-blur-md"
             >
               {suggestions.map((item) => {
-                const displayTitle = item.title || item.name;
+                const displayTitle = formatMovieBoxTitle(
+                  item.title || item.name,
+                  item.original_language,
+                  item.release_date || item.first_air_date
+                );
                 return (
                   <button
                     key={item.id}

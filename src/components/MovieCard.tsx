@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Star, Play, Bookmark, Plus } from "lucide-react";
 import { motion } from "framer-motion";
-import { MediaItem } from "@/lib/tmdb";
+import { MediaItem, formatMovieBoxTitle } from "@/lib/tmdb";
 
 interface MovieCardProps {
   item: MediaItem;
@@ -14,7 +14,11 @@ interface MovieCardProps {
 export default function MovieCard({ item, mediaType }: MovieCardProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const targetType = item.media_type || mediaType || "movie";
-  const titleText = item.title || item.name || "Untitled";
+  const titleText = formatMovieBoxTitle(
+    item.title || item.name || "Untitled",
+    item.original_language,
+    item.release_date || item.first_air_date
+  );
   const year = (item.release_date || item.first_air_date || "").substring(0, 4);
 
   const handleAddToList = (e: React.MouseEvent) => {
@@ -134,7 +138,11 @@ export function SkeletonCard() {
 export function LandscapeCard({ item, mediaType }: MovieCardProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const targetType = item.media_type || mediaType || "movie";
-  const titleText = item.title || item.name || "Untitled";
+  const titleText = formatMovieBoxTitle(
+    item.title || item.name || "Untitled",
+    item.original_language,
+    item.release_date || item.first_air_date
+  );
   const year = (item.release_date || item.first_air_date || "").substring(0, 4);
 
   return (
