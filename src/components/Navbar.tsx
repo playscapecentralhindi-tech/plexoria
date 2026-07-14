@@ -144,7 +144,7 @@ export default function Navbar() {
                 <span className="flex items-center justify-center w-6 h-6 rounded-md bg-[#EF4444] text-white">
                   <Play size={13} className="fill-current ml-0.5" />
                 </span>
-                <span>Plex<span className="text-[#EF4444]">oria</span></span>
+                <span className="whitespace-nowrap">Plex<span className="text-[#EF4444]">oria</span></span>
               </Link>
             </div>
 
@@ -293,7 +293,7 @@ export default function Navbar() {
                   <span className="flex items-center justify-center w-5.5 h-5.5 rounded-md bg-[#EF4444] text-white">
                     <Play size={11} className="fill-current ml-0.5" />
                   </span>
-                  <span>Plex<span className="text-[#EF4444]">oria</span></span>
+                  <span className="whitespace-nowrap">Plex<span className="text-[#EF4444]">oria</span></span>
                 </span>
                 <button 
                   onClick={() => setIsMenuOpen(false)}

@@ -24,6 +24,52 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
   const [watchedProgress, setWatchedProgress] = useState<{ [key: string]: number }>({});
   const [isFavorited, setIsFavorited] = useState(false);
   const [isAddedToList, setIsAddedToList] = useState(false);
+  const [commentInput, setCommentInput] = useState("");
+  const [commentsList, setCommentsList] = useState<any[]>([]);
+
+  // Load reviews on mount/change
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`plexoria_comments_${id}`);
+      if (stored) {
+        setCommentsList(JSON.parse(stored));
+      } else {
+        setCommentsList([
+          {
+            author: "Alex Johnson",
+            avatar: "A",
+            time: "2 hours ago",
+            text: "Loved the pacing of this! The video stream was super fast and clean. Thanks for uploading.",
+            color: "bg-[#EF4444]"
+          },
+          {
+            author: "Maria S.",
+            avatar: "M",
+            time: "1 day ago",
+            text: "One of my favorite titles. The quality controls and speed parameters work flawlessly!",
+            color: "bg-[#EF4444]/20 border border-[#EF4444]/40 text-[#EF4444]"
+          }
+        ]);
+      }
+    } catch {}
+  }, [id]);
+
+  const handleAddComment = () => {
+    if (!commentInput.trim()) return;
+    const newComment = {
+      author: "User",
+      avatar: "U",
+      time: "Just now",
+      text: commentInput.trim(),
+      color: "bg-white/10 text-white"
+    };
+    const updated = [...commentsList, newComment];
+    setCommentsList(updated);
+    setCommentInput("");
+    try {
+      localStorage.setItem(`plexoria_comments_${id}`, JSON.stringify(updated));
+    } catch {}
+  };
 
   // Sync state if URL changes
   useEffect(() => {
@@ -125,6 +171,9 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
   }
 
   const year = (media.release_date || media.first_air_date || "").substring(0, 4);
+  const isReleased = media.release_date
+    ? new Date(media.release_date) <= new Date()
+    : false;
   const runtimeHours = media.runtime ? Math.floor(media.runtime / 60) : 0;
   const runtimeMinutes = media.runtime ? media.runtime % 60 : 0;
   const durationText = media.runtime 
@@ -140,7 +189,9 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
 
   // Build active episode details
   const activeEpisodeTitle = activeEpisodeObj?.name || "";
-  const activeEpisodeRuntime = activeEpisodeObj?.runtime || media.episode_run_time?.[0] || 24;
+  const activeEpisodeRuntime = mediaType === "movie"
+    ? media.runtime || 24
+    : activeEpisodeObj?.runtime || media.episode_run_time?.[0] || 24;
 
   const currentPosterUrl = activeEpisodeObj?.still_path
     ? `https://image.tmdb.org/t/p/w780${activeEpisodeObj.still_path}`
@@ -475,7 +526,9 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                             className="object-cover group-hover:scale-105 transition-transform duration-300"
                           />
                         ) : (
-                          <div className="flex items-center justify-center w-full h-full text-[10px] text-slate-500 font-bold">No Photo</div>
+                          <div className="flex items-center justify-center w-full h-full bg-[#EF4444]/10 text-[#EF4444] text-[10px] font-black uppercase">
+                            {person.name ? person.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2) : "??"}
+                          </div>
                         )}
                       </div>
                       <p className="font-bold text-[10px] truncate px-1 text-white">{person.name}</p>
@@ -508,47 +561,46 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
               <h3 className="font-extrabold text-sm text-white uppercase tracking-wider border-b border-white/5 pb-2">
                 💬 User Reviews & Comments
               </h3>
-              <div className="space-y-4">
-                <div className="flex gap-3 border-b border-white/5 pb-3">
-                  <div className="w-8 h-8 rounded-full bg-[#EF4444] text-white flex items-center justify-center font-bold text-xs">A</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-white">Alex Johnson</span>
-                      <span className="text-[9px] text-slate-500">2 hours ago</span>
+              <div className="space-y-4 max-h-72 overflow-y-auto scrollbar-thin pr-1">
+                {commentsList.map((c: any, idx: number) => (
+                  <div key={idx} className="flex gap-3 border-b border-white/5 pb-3 last:border-b-0 last:pb-0">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${c.color || "bg-white/10"}`}>
+                      {c.avatar}
                     </div>
-                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                      Loved the pacing of this! The video stream was super fast and clean. Thanks for uploading.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 border-b border-white/5 pb-3">
-                  <div className="w-8 h-8 rounded-full bg-[#EF4444]/20 border border-[#EF4444]/40 text-[#EF4444] flex items-center justify-center font-bold text-xs">M</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-white">Maria S.</span>
-                      <span className="text-[9px] text-slate-500">1 day ago</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-white">{c.author}</span>
+                        <span className="text-[9px] text-slate-500">{c.time}</span>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-1 leading-relaxed whitespace-normal break-words">
+                        {c.text}
+                      </p>
                     </div>
-                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                      One of my favorite episodes. The quality controls and speed parameters work flawlessly!
-                    </p>
                   </div>
-                </div>
+                ))}
               </div>
 
               {/* Fake post input block */}
-              <div className="flex gap-3 pt-2">
-                <div className="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center font-bold text-xs">U</div>
-                <div className="flex-1 flex gap-2">
+              <div className="flex gap-3 pt-2 border-t border-white/5">
+                <div className="w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center font-bold text-xs shrink-0">U</div>
+                <form 
+                  onSubmit={(e) => { e.preventDefault(); handleAddComment(); }} 
+                  className="flex-1 flex gap-2"
+                >
                   <input
                     type="text"
+                    value={commentInput}
+                    onChange={(e) => setCommentInput(e.target.value)}
                     placeholder="Write a comment..."
                     className="flex-1 bg-white/5 border border-white/5 rounded-xl px-4 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#EF4444]"
                   />
-                  <button className="px-4 py-2 bg-[#EF4444] text-white font-bold text-xs rounded-xl hover:bg-[#DC2626] transition-colors">
+                  <button 
+                    type="submit"
+                    className="px-4 py-2 bg-[#EF4444] text-white font-bold text-xs rounded-xl hover:bg-[#DC2626] transition-colors"
+                  >
                     Post
                   </button>
-                </div>
+                </form>
               </div>
             </FadeUp>
 
@@ -596,13 +648,13 @@ export default function MediaDetail({ mediaType, id }: { mediaType: MediaType; i
                 </div>
               )}
               
-              {mediaType === "movie" && media.budget > 0 && (
+              {mediaType === "movie" && isReleased && media.budget > 0 && (
                 <div className="flex justify-between items-center py-1 border-b border-white/5">
                   <span className="text-slate-400">Budget</span>
                   <span className="font-semibold text-white">${(media.budget / 1000000).toFixed(1)}M</span>
                 </div>
               )}
-              {mediaType === "movie" && media.revenue > 0 && (
+              {mediaType === "movie" && isReleased && media.revenue > 0 && (
                 <div className="flex justify-between items-center py-1">
                   <span className="text-slate-400">Box Office</span>
                   <span className="font-semibold text-white">${(media.revenue / 1000000).toFixed(1)}M</span>

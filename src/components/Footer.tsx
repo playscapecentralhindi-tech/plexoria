@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React from "react";
 import Link from "next/link";
@@ -34,7 +34,7 @@ export default function Footer() {
               <span className="flex items-center justify-center w-6 h-6 rounded-md bg-[#EF4444] text-white">
                 <Play size={13} className="fill-current ml-0.5" />
               </span>
-              <span>Plex<span className="text-[#EF4444]">oria</span></span>
+              <span className="whitespace-nowrap">Plex<span className="text-[#EF4444]">oria</span></span>
             </Link>
           </motion.div>
           <p className="text-xs text-slate-400 leading-relaxed font-medium">

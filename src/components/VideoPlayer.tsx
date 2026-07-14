@@ -186,6 +186,11 @@ export default function VideoPlayer({
   // Fetch MovieBox Streams when episodes change
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 15000); // 15s absolute timeout for stream resolution
+
     const fetchMovieBoxStreams = async () => {
       setIsLoadingStream(true);
       setStreamError(null);
@@ -200,8 +205,11 @@ export default function VideoPlayer({
         const res = await fetch(
           isPhpDeploy
             ? `/api/moviebox/play/index.php?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&imdbId=${encodeURIComponent(imdbId || "")}&_t=${Date.now()}${dubParam}`
-            : `/api/moviebox/play?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&imdbId=${encodeURIComponent(imdbId || "")}&_t=${Date.now()}${dubParam}`
+            : `/api/moviebox/play?title=${encodeURIComponent(title)}&mediaType=${mediaType}&season=${season}&episode=${episode}&imdbId=${encodeURIComponent(imdbId || "")}&_t=${Date.now()}${dubParam}`,
+          { signal: controller.signal }
         );
+        clearTimeout(timeoutId);
+
         if (!res.ok) {
           let errMsg = "Failed to load Plexoria stream index";
           try {
@@ -274,9 +282,14 @@ export default function VideoPlayer({
       } catch (err: any) {
         console.error("MovieBox stream resolver failed:", err);
         if (isMounted) {
-          setStreamError(err.message || "Failed to resolve streams.");
+          if (err.name === "AbortError") {
+            setStreamError("Stream resolution timed out. Please select another mirror or retry.");
+          } else {
+            setStreamError(err.message || "Failed to resolve streams.");
+          }
         }
       } finally {
+        clearTimeout(timeoutId);
         if (isMounted) {
           setIsLoadingStream(false);
         }
@@ -286,6 +299,8 @@ export default function VideoPlayer({
     fetchMovieBoxStreams();
     return () => {
       isMounted = false;
+      clearTimeout(timeoutId);
+      controller.abort();
     };
   }, [season, episode, title, mediaType]);
 
@@ -511,7 +526,7 @@ export default function VideoPlayer({
                 <span className="text-[#EF4444] text-[10px] font-extrabold font-mono tracking-widest uppercase block mb-1">Streaming Alert</span>
                 <h3 className="text-sm font-bold text-white">Stream currently unavailable</h3>
                 <p className="text-[11px] text-gray-400 leading-normal font-medium">
-                  {streamError || "MovieBox failed to resolve the media streaming source. Please try again later or refresh the page."}
+                  {streamError || "Plexoria failed to resolve the media streaming source. Please try again later or refresh the page."}
                 </p>
               </div>
             </div>
