@@ -11,11 +11,25 @@ interface ServerMetric {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    let body;
+    try {
+      body = await req.json();
+    } catch (e) {
+      return NextResponse.json({ error: "Malformed JSON payload" }, { status: 400 });
+    }
+
     const { mediaType, id, season, episode } = body;
 
     if (!mediaType || !id) {
       return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
+    }
+
+    if (
+      typeof mediaType !== "string" ||
+      (mediaType !== "movie" && mediaType !== "tv") ||
+      (typeof id !== "string" && typeof id !== "number")
+    ) {
+      return NextResponse.json({ error: "Invalid parameter types" }, { status: 400 });
     }
 
     // 5 base providers

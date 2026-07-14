@@ -44,7 +44,9 @@ def test_play_api_returns_valid_structure_on_success(base_url):
         assert "hls" in data
         assert "captions" in data
         assert "availableDubs" in data
-        assert "subjectId" in data
+        assert "title" in data
+        # Each stream must have a streamUrl for the player to use
+        assert all("streamUrl" in s for s in data["streams"])
 
 # ==============================================================================
 # TIER 2: BOUNDARY & CORNER CASES - MovieBox Play API (F3)

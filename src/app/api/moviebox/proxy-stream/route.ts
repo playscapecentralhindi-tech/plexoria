@@ -1,37 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
-
-// All known CDN domains that MovieBox streams from
-const ALLOWED_CDN_PATTERNS = [
-  "aoneroom.com",
-  "netfilm.world",
-  "hakunaymatata.com",
-  "moviebox.ph",
-  "wefeed",
-  "cdn",
-  "stream",
-  "video",
-  "media",
-  "vod",
-  "play",
-  "hls",
-  "cdnmovie",
-  "vccloud",
-  "fastly",
-  "cloudfront",
-  "akamaicontents",
-  "storage.googleapis",
-  "firebasestorage",
-  "s3.amazonaws",
-  "r2.cloudflarestorage",
-];
+export const runtime = "edge";
 
 function isAllowedStreamDomain(hostname: string): boolean {
   const h = hostname.toLowerCase();
-  // Allow any subdomain of known CDN providers
-  return ALLOWED_CDN_PATTERNS.some(pattern => h.includes(pattern));
+
+  // Strict domain checks (exact match or ends with .domain)
+  const strictDomains = [
+    "aoneroom.com",
+    "netfilm.world",
+    "hakunaymatata.com",
+    "moviebox.ph",
+  ];
+
+  if (strictDomains.some(d => h === d || h.endsWith("." + d))) {
+    return true;
+  }
+
+  // Safe keyword matching on parts of the domain name to prevent matching "fakeaoneroom.com"
+  const cdnKeywords = [
+    "wefeed",
+    "cdn",
+    "stream",
+    "video",
+    "media",
+    "vod",
+    "play",
+    "hls",
+    "cdnmovie",
+    "vccloud",
+    "fastly",
+    "cloudfront",
+    "akamaicontents",
+    "storage.googleapis",
+    "firebasestorage",
+    "s3.amazonaws",
+    "r2.cloudflarestorage",
+  ];
+
+  const parts = h.split(".");
+  return parts.some(part => cdnKeywords.some(kw => part.includes(kw)));
 }
+
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;

@@ -349,10 +349,11 @@ export async function GET(req: NextRequest) {
     if (scoredItems.length > 0 && scoredItems[0].score > 0) {
       matchedItems = scoredItems.slice(0, 8).filter(s => s.score > 0).map(s => s.item);
     } else if (allSearchItems.length > 0) {
-      // Zero-score fallback: accept any item sharing a significant word
-      matchedItems = allSearchItems
-        .filter(item => shareSignificantWord(item.title || "", title))
-        .slice(0, 3);
+      // Zero-score fallback: check if the first (most relevant) item shares a significant word
+      const fallbackItem = allSearchItems[0];
+      if (shareSignificantWord(fallbackItem.title || "", title)) {
+        matchedItems = [fallbackItem];
+      }
     }
 
     if (matchedItems.length === 0) {
@@ -501,7 +502,8 @@ export async function GET(req: NextRequest) {
           isDubbed: parsed.isDubbed,
           isOriginal: parsed.isOriginal,
           isMultiAudio: parsed.isMultiAudio,
-          serverName
+          serverName,
+          url: streamUrl // Map url for test suite compatibility
         });
       });
     });
@@ -516,9 +518,29 @@ export async function GET(req: NextRequest) {
       dub: lang.toLowerCase().includes("hindi") ? "hindi" : (lang.toLowerCase().includes("tamil") ? "tamil" : (lang.toLowerCase().includes("telugu") ? "telugu" : ""))
     }));
 
+    const hls = normalizedStreams
+      .filter((s) => s.serverName.includes("HLS"))
+      .map((s) => ({
+        resolution: s.resolution,
+        format: "HLS",
+        url: s.streamUrl,
+        vipLocked: false
+      }));
+
+    const dash = normalizedStreams
+      .filter((s) => s.serverName.includes("DASH"))
+      .map((s) => ({
+        resolution: s.resolution,
+        format: "DASH",
+        url: s.streamUrl,
+        vipLocked: false
+      }));
+
     const responseData = {
       title: matchedItems[0].title,
       streams: normalizedStreams,
+      hls, // Map root hls for test suite compatibility
+      dash, // Map root dash for test suite compatibility
       captions: Array.from(uniqueCaptions.values()),
       availableDubs,
       legacyStreams: normalizedStreams.filter(s => !s.isDubbed),
