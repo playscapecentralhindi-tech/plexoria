@@ -69,16 +69,17 @@ export default function MediaRow({ title, fetchFn, mediaType, layout = "poster" 
       className="relative py-4 pl-4 md:pl-12 group select-none overflow-hidden"
     >
       {/* Title */}
-      <div className="flex items-center justify-between pr-4 md:pr-12 mb-3">
-        <h2 className="text-lg md:text-xl font-extrabold text-[#F8FAFC] flex items-center tracking-wide border-l-[3px] border-[#EF4444] pl-3">
+      <div className="flex items-center justify-between pr-4 md:pr-12 mb-4">
+        <h2 className="text-base md:text-lg font-extrabold text-[#F1F5F9] flex items-center tracking-tight">
+          <span className="inline-block w-[3px] h-5 rounded-full bg-gradient-to-b from-[#EF4444] to-[#B91C1C] mr-3 shrink-0" />
           {title}
         </h2>
-        <Link 
-          href={mediaType === "movie" ? "/discover?type=movie" : "/discover?type=tv"} 
-          className="flex items-center gap-1 text-xs text-slate-400 hover:text-[#EF4444] transition-colors font-semibold group/viewall"
+        <Link
+          href={mediaType === "movie" ? "/discover?type=movie" : "/discover?type=tv"}
+          className="flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-slate-200 transition-colors font-semibold group/viewall glass px-2.5 py-1.5 rounded-lg border border-white/[0.06] hover:border-white/[0.12]"
         >
           <span>View All</span>
-          <ChevronRight size={14} className="group-hover/viewall:translate-x-0.5 transition-transform" />
+          <ChevronRight size={12} className="group-hover/viewall:translate-x-0.5 transition-transform" />
         </Link>
       </div>
 
@@ -86,13 +87,16 @@ export default function MediaRow({ title, fetchFn, mediaType, layout = "poster" 
       <div className="relative w-full">
         {/* Navigation Left Arrow */}
         {layout !== "grid" && (
-          <button
+          <motion.button
             onClick={() => handleScroll("left")}
-            className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/85 border border-white/5 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all duration-300 hover:scale-105 active:scale-95 backdrop-blur-md z-30"
+            whileHover={{ scale: 1.08, x: -1 }}
+            whileTap={{ scale: 0.94 }}
+            transition={{ type: "spring", stiffness: 420, damping: 22 }}
+            className="absolute left-1 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full glass-mid flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-30 border border-white/[0.08]"
             title="Scroll Left"
           >
-            <ChevronLeft size={20} />
-          </button>
+            <ChevronLeft size={18} />
+          </motion.button>
         )}
 
         {/* Horizontal Scrollable Row or Static Grid */}
@@ -173,13 +177,16 @@ export default function MediaRow({ title, fetchFn, mediaType, layout = "poster" 
 
         {/* Navigation Right Arrow */}
         {layout !== "grid" && (
-          <button
+          <motion.button
             onClick={() => handleScroll("right")}
-            className="absolute right-6 md:right-14 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/85 border border-white/5 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all duration-300 hover:scale-105 active:scale-95 backdrop-blur-md z-30"
+            whileHover={{ scale: 1.08, x: 1 }}
+            whileTap={{ scale: 0.94 }}
+            transition={{ type: "spring", stiffness: 420, damping: 22 }}
+            className="absolute right-4 md:right-12 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full glass-mid flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-30 border border-white/[0.08]"
             title="Scroll Right"
           >
-            <ChevronRight size={20} />
-          </button>
+            <ChevronRight size={18} />
+          </motion.button>
         )}
       </div>
     </motion.section>

@@ -1,228 +1,292 @@
 "use client";
 
-import React from "react";
-import { motion, useReducedMotion, Variants, MotionProps } from "framer-motion";
-import {
-  fadeIn,
-  fadeUp,
-  fadeDown,
-  fadeLeft,
-  fadeRight,
-  scaleIn,
-  staggerContainer,
-  staggerItem,
-} from "@/lib/animations";
+import { motion, Variants } from "framer-motion";
+import { ReactNode, useRef } from "react";
 
-interface AnimationWrapperProps extends MotionProps {
-  children: React.ReactNode;
+/* ============================================================
+   SPRING MOTION TOKENS
+   ============================================================ */
+const SPRING_GENTLE = { type: "spring", stiffness: 280, damping: 30, mass: 0.8 } as const;
+const SPRING_SNAPPY = { type: "spring", stiffness: 400, damping: 28, mass: 0.7 } as const;
+const SPRING_BOUNCY = { type: "spring", stiffness: 320, damping: 20, mass: 0.9 } as const;
+const EASE_OUT_EXPO = [0.16, 1, 0.3, 1] as [number, number, number, number];
+
+/* ============================================================
+   FADE UP — Primary entrance animation
+   ============================================================ */
+interface FadeUpProps {
+  children: ReactNode;
   className?: string;
   delay?: number;
   duration?: number;
   once?: boolean;
 }
 
-// Helper to disable translation/scale animations for accessibility
-const useAccessibleVariants = (variants: Variants, disableTransform = true): Variants => {
-  const shouldReduce = useReducedMotion();
-
-  if (!shouldReduce) return variants;
-
-  // If user prefers reduced motion, strip out offsets and scale factors, keeping only opacity transitions
-  const reducedVariants: Variants = {};
-  for (const [key, value] of Object.entries(variants)) {
-    if (typeof value === "object") {
-      reducedVariants[key] = {
-        ...value,
-        x: 0,
-        y: 0,
-        scale: 1,
-        rotate: 0,
-        transition: { duration: 0.1 },
-      };
-    } else {
-      reducedVariants[key] = value;
-    }
-  }
-  return reducedVariants;
-};
-
-export const FadeIn: React.FC<AnimationWrapperProps> = ({
+export function FadeUp({
   children,
-  className,
+  className = "",
   delay = 0,
+  duration = 0.55,
   once = true,
-  ...props
-}) => {
-  const variants = useAccessibleVariants(fadeIn);
+}: FadeUpProps) {
   return (
     <motion.div
-      variants={variants}
-      initial="hidden"
-      whileInView="visible"
-      viewport={{ once }}
-      transition={{ delay }}
+      initial={{ opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once, margin: "-40px" }}
+      transition={{
+        duration,
+        delay,
+        ease: EASE_OUT_EXPO,
+      }}
       className={className}
-      {...props}
     >
       {children}
     </motion.div>
   );
-};
-
-export const FadeUp: React.FC<AnimationWrapperProps> = ({
-  children,
-  className,
-  delay = 0,
-  once = true,
-  ...props
-}) => {
-  const variants = useAccessibleVariants(fadeUp);
-  return (
-    <motion.div
-      variants={variants}
-      initial="hidden"
-      whileInView="visible"
-      viewport={{ once, margin: "-20px" }}
-      transition={{ delay }}
-      className={className}
-      {...props}
-    >
-      {children}
-    </motion.div>
-  );
-};
-
-export const FadeDown: React.FC<AnimationWrapperProps> = ({
-  children,
-  className,
-  delay = 0,
-  once = true,
-  ...props
-}) => {
-  const variants = useAccessibleVariants(fadeDown);
-  return (
-    <motion.div
-      variants={variants}
-      initial="hidden"
-      whileInView="visible"
-      viewport={{ once }}
-      transition={{ delay }}
-      className={className}
-      {...props}
-    >
-      {children}
-    </motion.div>
-  );
-};
-
-export const FadeLeft: React.FC<AnimationWrapperProps> = ({
-  children,
-  className,
-  delay = 0,
-  once = true,
-  ...props
-}) => {
-  const variants = useAccessibleVariants(fadeLeft);
-  return (
-    <motion.div
-      variants={variants}
-      initial="hidden"
-      whileInView="visible"
-      viewport={{ once }}
-      transition={{ delay }}
-      className={className}
-      {...props}
-    >
-      {children}
-    </motion.div>
-  );
-};
-
-export const FadeRight: React.FC<AnimationWrapperProps> = ({
-  children,
-  className,
-  delay = 0,
-  once = true,
-  ...props
-}) => {
-  const variants = useAccessibleVariants(fadeRight);
-  return (
-    <motion.div
-      variants={variants}
-      initial="hidden"
-      whileInView="visible"
-      viewport={{ once }}
-      transition={{ delay }}
-      className={className}
-      {...props}
-    >
-      {children}
-    </motion.div>
-  );
-};
-
-export const ScaleIn: React.FC<AnimationWrapperProps> = ({
-  children,
-  className,
-  delay = 0,
-  once = true,
-  ...props
-}) => {
-  const variants = useAccessibleVariants(scaleIn);
-  return (
-    <motion.div
-      variants={variants}
-      initial="hidden"
-      whileInView="visible"
-      viewport={{ once }}
-      transition={{ delay }}
-      className={className}
-      {...props}
-    >
-      {children}
-    </motion.div>
-  );
-};
-
-interface StaggerContainerProps extends MotionProps {
-  children: React.ReactNode;
-  className?: string;
-  stagger?: number;
-  delay?: number;
-  once?: boolean;
 }
 
-export const StaggerContainer: React.FC<StaggerContainerProps> = ({
-  children,
-  className,
-  stagger = 0.05,
-  delay = 0,
-  once = true,
-  ...props
-}) => {
+/* ============================================================
+   SCALE IN — For modals, cards, dialogs
+   ============================================================ */
+interface ScaleInProps {
+  children: ReactNode;
+  className?: string;
+  delay?: number;
+}
+
+export function ScaleIn({ children, className = "", delay = 0 }: ScaleInProps) {
   return (
     <motion.div
-      variants={staggerContainer(stagger, delay)}
-      initial="hidden"
-      whileInView="visible"
-      viewport={{ once, margin: "-40px" }}
+      initial={{ opacity: 0, scale: 0.96, y: 8 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.96, y: 8 }}
+      transition={{ ...SPRING_GENTLE, delay }}
       className={className}
-      {...props}
     >
       {children}
     </motion.div>
   );
-};
+}
 
-export const StaggerItem: React.FC<AnimationWrapperProps> = ({
-  children,
-  className,
-  ...props
-}) => {
-  const variants = useAccessibleVariants(staggerItem);
+/* ============================================================
+   GLASS REVEAL — blur + fade combo (glass surfaces appearing)
+   ============================================================ */
+interface GlassRevealProps {
+  children: ReactNode;
+  className?: string;
+  delay?: number;
+}
+
+export function GlassReveal({ children, className = "", delay = 0 }: GlassRevealProps) {
   return (
-    <motion.div variants={variants} className={className} {...props}>
+    <motion.div
+      initial={{ opacity: 0, scale: 0.98, filter: "blur(8px)" }}
+      animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+      exit={{ opacity: 0, scale: 0.98, filter: "blur(8px)" }}
+      transition={{ duration: 0.45, delay, ease: EASE_OUT_EXPO }}
+      className={className}
+    >
       {children}
     </motion.div>
   );
+}
+
+/* ============================================================
+   SLIDE IN — Drawer / panel entrance
+   ============================================================ */
+interface SlideInProps {
+  children: ReactNode;
+  className?: string;
+  from?: "left" | "right" | "bottom";
+  delay?: number;
+}
+
+export function SlideIn({
+  children,
+  className = "",
+  from = "left",
+  delay = 0,
+}: SlideInProps) {
+  const initial =
+    from === "left" ? { x: -32, opacity: 0 }
+    : from === "right" ? { x: 32, opacity: 0 }
+    : { y: 24, opacity: 0 };
+
+  return (
+    <motion.div
+      initial={initial}
+      animate={{ x: 0, y: 0, opacity: 1 }}
+      exit={initial}
+      transition={{ ...SPRING_SNAPPY, delay }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/* ============================================================
+   STAGGER CONTAINER — Children animate in sequence
+   ============================================================ */
+interface StaggerContainerProps {
+  children: ReactNode;
+  className?: string;
+  staggerDelay?: number;
+}
+
+const containerVariants: Variants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.06,
+      delayChildren: 0.05,
+    },
+  },
+};
+
+const childVariants: Variants = {
+  hidden: { opacity: 0, y: 16 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: "spring",
+      stiffness: 300,
+      damping: 28,
+    },
+  },
+};
+
+export function StaggerContainer({
+  children,
+  className = "",
+}: StaggerContainerProps) {
+  return (
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      whileInView="show"
+      viewport={{ once: true, margin: "-40px" }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+export function StaggerItem({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <motion.div variants={childVariants} className={className}>
+      {children}
+    </motion.div>
+  );
+}
+
+/* ============================================================
+   HOVER LIFT — Subtle lift on hover for glass cards
+   ============================================================ */
+interface HoverLiftProps {
+  children: ReactNode;
+  className?: string;
+  liftAmount?: number;
+  scaleAmount?: number;
+}
+
+export function HoverLift({
+  children,
+  className = "",
+  liftAmount = 4,
+  scaleAmount = 1.015,
+}: HoverLiftProps) {
+  return (
+    <motion.div
+      whileHover={{
+        y: -liftAmount,
+        scale: scaleAmount,
+        transition: SPRING_GENTLE,
+      }}
+      whileTap={{
+        scale: 0.98,
+        transition: { duration: 0.1 },
+      }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/* ============================================================
+   PULSE (breathing light effect)
+   ============================================================ */
+export function Pulse({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <motion.div
+      animate={{ opacity: [0.85, 1, 0.85] }}
+      transition={{
+        duration: 3,
+        repeat: Infinity,
+        ease: "easeInOut",
+      }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/* ============================================================
+   DRAWER VARIANTS (for Navbar mobile)
+   ============================================================ */
+export const drawerLeftVariants: Variants = {
+  hidden: { x: "-100%", opacity: 0 },
+  visible: {
+    x: 0,
+    opacity: 1,
+    transition: { ...SPRING_SNAPPY },
+  },
+  exit: {
+    x: "-100%",
+    opacity: 0,
+    transition: { duration: 0.25, ease: EASE_OUT_EXPO },
+  },
+};
+
+export const drawerOverlayVariants: Variants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { duration: 0.25, ease: "easeOut" },
+  },
+  exit: {
+    opacity: 0,
+    transition: { duration: 0.20, ease: "easeIn" },
+  },
+};
+
+/* ============================================================
+   BACKWARDS-COMPAT ALIASES (keep existing consumers working)
+   ============================================================ */
+
+/** @deprecated Use FadeUp instead */
+export { FadeUp as FadeIn };
+
+/** Framer Motion variant object for simple fade-in (for legacy use) */
+export const fadeIn = {
+  hidden: { opacity: 0, y: 12 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } },
 };

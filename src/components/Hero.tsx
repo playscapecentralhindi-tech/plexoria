@@ -72,34 +72,39 @@ export default function Hero() {
   const year = (item.release_date || item.first_air_date || "").substring(0, 4);
 
   return (
-    <div className="relative w-full h-[80vh] md:h-[90vh] flex items-end overflow-hidden bg-black select-none group border-b border-white/5">
+    <div className="relative w-full h-[82vh] md:h-[92vh] flex items-end overflow-hidden bg-black select-none group">
       {/* ── BACKGROUND IMAGE SLIDESHOW ── */}
       <div className="absolute inset-0 z-0">
         <AnimatePresence mode="sync">
           <motion.div
             key={"bg-" + item.id}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            initial={{ opacity: 0, scale: 1.04 }}
+            animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 1.0, ease: "easeInOut" }}
+            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
             className="absolute inset-0 w-full h-full"
           >
             <img
               src={"https://image.tmdb.org/t/p/original" + item.backdrop_path}
               alt={item.title || item.name || "Hero Background"}
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full object-cover object-center"
             />
           </motion.div>
         </AnimatePresence>
 
-        {/* Left-to-Right and Bottom-to-Top Gradients matching screenshot */}
-        <div className="absolute inset-0 z-10 bg-gradient-to-t from-[#0A0A0A] via-transparent to-transparent" />
-        <div className="absolute inset-0 z-10 bg-gradient-to-r from-[#0A0A0A] via-[#0A0A0A]/70 to-transparent" />
-        <div className="absolute inset-x-0 top-0 h-32 z-10 bg-gradient-to-b from-[#0A0A0A]/40 to-transparent" />
+        {/* Cinematic letterbox gradient system */}
+        {/* Bottom fade — tall, aggressive for text legibility */}
+        <div className="absolute inset-0 z-10 bg-gradient-to-t from-[#08090F] via-[#08090F]/60 to-transparent" style={{ background: 'linear-gradient(to top, #08090F 0%, rgba(8,9,15,0.75) 30%, rgba(8,9,15,0.20) 60%, transparent 100%)' }} />
+        {/* Left side fade — for info panel */}
+        <div className="absolute inset-0 z-10" style={{ background: 'linear-gradient(to right, #08090F 0%, rgba(8,9,15,0.80) 25%, rgba(8,9,15,0.30) 55%, transparent 100%)' }} />
+        {/* Top fade — merges with navbar */}
+        <div className="absolute inset-x-0 top-0 h-48 z-10" style={{ background: 'linear-gradient(to bottom, rgba(8,9,15,0.55) 0%, transparent 100%)' }} />
+        {/* Edge vignette */}
+        <div className="absolute inset-0 z-10" style={{ background: 'radial-gradient(ellipse 100% 100% at 50% 50%, transparent 50%, rgba(0,0,0,0.25) 100%)' }} />
       </div>
 
-      {/* ── CONTENT CONTAINER (Left-aligned & Shifted upwards) ── */}
-      <div className="relative z-20 w-full max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 pb-28 md:pb-36">
+      {/* ── CONTENT CONTAINER ── */}
+      <div className="relative z-20 w-full max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 pb-24 md:pb-32">
         <AnimatePresence mode="wait">
           <motion.div
             key={item.id}
@@ -107,126 +112,124 @@ export default function Hero() {
               hidden: { opacity: 0 },
               visible: {
                 opacity: 1,
-                transition: {
-                  staggerChildren: 0.1,
-                  delayChildren: 0.1,
-                }
+                transition: { staggerChildren: 0.08, delayChildren: 0.08 }
               },
-              exit: {
-                opacity: 0,
-                transition: { duration: 0.25 }
-              }
+              exit: { opacity: 0, y: -8, transition: { duration: 0.22 } }
             }}
             initial="hidden"
             animate="visible"
             exit="exit"
-            className="max-w-xl md:max-w-2xl flex flex-col items-start gap-4 p-6 md:p-8 rounded-2xl glass-hero"
+            className="max-w-lg md:max-w-2xl flex flex-col items-start gap-4 p-6 md:p-8 rounded-2xl glass-hero glass-border-gradient"
           >
-            {/* Redesigned Metadata Row */}
+            {/* Metadata badges row */}
             <motion.div 
-              variants={{
-                hidden: { opacity: 0, y: 15 },
-                visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }
-              }}
-              className="flex flex-wrap items-center gap-2.5 text-xs md:text-sm font-semibold text-gray-300 select-text mb-1"
+              variants={{ hidden: { opacity: 0, y: 14 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 320, damping: 24 } } }}
+              className="flex flex-wrap items-center gap-2 text-xs font-semibold select-text"
             >
-              {/* Stars & Rating */}
-              <div className="flex items-center gap-1.5 text-[#FBBF24]">
-                <Star size={14} fill="currentColor" />
-                <span className="text-white font-extrabold">{item.vote_average?.toFixed(1)}</span>
+              {/* Rating badge */}
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg rating-badge">
+                <Star size={12} fill="#F59E0B" className="text-amber-500" />
+                <span className="text-amber-400 font-extrabold">{item.vote_average?.toFixed(1)}</span>
               </div>
-              
-              <span className="text-gray-600">•</span>
-              
-              <span className="capitalize text-white bg-[#E50914]/15 border border-[#E50914]/30 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider">
-                {item.media_type === "tv" ? "TV Show" : "Movie"}
-              </span>
-              
-              {year && (
-                <>
-                  <span className="text-gray-600">•</span>
-                  <span>{year}</span>
-                </>
-              )}
-              
-              {genres && (
-                <>
-                  <span className="text-gray-600">•</span>
-                  <span className="text-gray-400 font-medium truncate max-w-[150px] md:max-w-xs">{genres}</span>
-                </>
-              )}
 
-              <span className="text-gray-600">•</span>
-              <span className="text-[10px] font-bold tracking-wider border border-white/20 px-1 py-0.5 rounded bg-white/5">1080P</span>
-              <span className="text-[10px] font-bold tracking-wider border border-white/20 px-1 py-0.5 rounded bg-white/5">MULTI-SUB</span>
+              {/* Media type pill */}
+              <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold tracking-widest uppercase text-red-400 bg-red-500/10 border border-red-500/25">
+                {item.media_type === "tv" ? "Series" : "Film"}
+              </span>
+
+              {/* Year */}
+              {year && <span className="text-slate-400">{year}</span>}
+
+              {/* Quality badges */}
+              <span className="text-[9px] font-black tracking-wider border border-white/15 px-1.5 py-0.5 rounded-md bg-white/[0.04] text-slate-300">HD</span>
+              <span className="text-[9px] font-black tracking-wider border border-white/15 px-1.5 py-0.5 rounded-md bg-white/[0.04] text-slate-300">SUB</span>
             </motion.div>
 
-            {/* Static Typography Title */}
+            {/* Genre pills */}
+            {genres && (
+              <motion.div
+                variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 22 } } }}
+                className="flex flex-wrap gap-1.5"
+              >
+                {(item.genre_ids || []).slice(0, 3).map((id: number) => {
+                  const genreMap: Record<number, string> = { 28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime", 99: "Documentary", 18: "Drama", 10751: "Family", 14: "Fantasy", 27: "Horror", 9648: "Mystery", 10749: "Romance", 878: "Sci-Fi", 53: "Thriller", 10752: "War", 37: "Western", 10759: "Action & Adventure", 10765: "Sci-Fi & Fantasy" };
+                  const name = genreMap[id];
+                  if (!name) return null;
+                  return (
+                    <span key={id} className="text-[10px] font-semibold text-slate-300 px-2 py-0.5 rounded-full glass border border-white/10">
+                      {name}
+                    </span>
+                  );
+                })}
+              </motion.div>
+            )}
+
+            {/* Title */}
             <motion.h1 
-              variants={{
-                hidden: { opacity: 0, y: 15 },
-                visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }
-              }}
-              className="text-4xl md:text-6xl font-black text-white leading-tight select-text tracking-tight drop-shadow-md"
+              variants={{ hidden: { opacity: 0, y: 14 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 280, damping: 22 } } }}
+              className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white leading-[1.05] select-text tracking-tight"
+              style={{ textShadow: '0 2px 20px rgba(0,0,0,0.50)' }}
             >
               {item.title || item.name}
             </motion.h1>
 
             {/* Synopsis */}
             <motion.p 
-              variants={{
-                hidden: { opacity: 0, y: 15 },
-                visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }
-              }}
-              className="text-xs md:text-sm text-gray-300/90 line-clamp-3 leading-relaxed max-w-xl select-text drop-shadow"
+              variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 280, damping: 22 } } }}
+              className="text-xs md:text-sm text-slate-300/85 line-clamp-3 leading-relaxed max-w-xl select-text"
             >
               {item.overview}
             </motion.p>
 
             {/* Action Buttons */}
             <motion.div 
-              variants={{
-                hidden: { opacity: 0, y: 15 },
-                visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 20 } }
-              }}
-              className="flex items-center gap-4 pt-2"
+              variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 280, damping: 22 } } }}
+              className="flex items-center gap-3 pt-1"
             >
-              <Link
-                href={"/" + (item.media_type || "movie") + "?id=" + item.id + "&autoplay=1"}
-                className="glass-btn-primary glass-ripple flex items-center gap-2 text-white px-7 py-3 rounded-xl text-sm font-black transition-all hover:scale-[1.03] active:scale-[0.98] duration-200"
-              >
-                <Play size={16} className="fill-current ml-0.5" /> Watch Now
-              </Link>
-              <Link
-                href={"/" + (item.media_type || "movie") + "?id=" + item.id}
-                className="glass-btn-secondary glass-ripple flex items-center gap-2 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all"
-              >
-                <Info size={15} /> More Info
-              </Link>
+              <motion.div whileHover={{ scale: 1.02, y: -1 }} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 20 }}>
+                <Link
+                  href={"/" + (item.media_type || "movie") + "?id=" + item.id + "&autoplay=1"}
+                  className="glass-btn-primary glass-ripple flex items-center gap-2 text-white px-6 py-3 rounded-xl text-sm font-extrabold"
+                >
+                  <Play size={16} className="fill-current" /> Watch Now
+                </Link>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.02, y: -1 }} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 20 }}>
+                <Link
+                  href={"/" + (item.media_type || "movie") + "?id=" + item.id}
+                  className="glass-btn-secondary glass-ripple flex items-center gap-2 text-white px-5 py-3 rounded-xl text-sm font-semibold"
+                >
+                  <Info size={15} /> More Info
+                </Link>
+              </motion.div>
             </motion.div>
           </motion.div>
         </AnimatePresence>
       </div>
 
-      {/* Slide Indicators with Progress Line */}
-      <div className="absolute right-4 sm:right-8 lg:right-12 bottom-12 z-30 flex items-center gap-2">
+      {/* Slide Indicators */}
+      <div className="absolute right-4 sm:right-8 lg:right-12 bottom-8 z-30 flex items-center gap-1.5">
         {validItems.map((_, idx) => (
-          <button
+          <motion.button
             key={idx}
             onClick={() => setActiveIndex(idx)}
-            className="group relative h-1.5 rounded-full overflow-hidden transition-all duration-300 cursor-pointer focus:outline-none"
-            style={{ width: activeIndex === idx ? "40px" : "12px", backgroundColor: "rgba(255, 255, 255, 0.2)" }}
+            className="relative h-1 rounded-full overflow-hidden cursor-pointer focus:outline-none"
+            animate={{ width: activeIndex === idx ? 36 : 8 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            style={{ backgroundColor: 'rgba(255,255,255,0.20)' }}
             aria-label={`Go to slide ${idx + 1}`}
           >
             {activeIndex === idx && (
               <motion.div
+                key={`progress-${idx}`}
                 initial={{ width: "0%" }}
                 animate={{ width: "100%" }}
                 transition={{ duration: 10, ease: "linear" }}
-                className="absolute top-0 left-0 bottom-0 bg-[#EF4444]"
+                className="absolute top-0 left-0 bottom-0 rounded-full"
+                style={{ background: 'linear-gradient(to right, #EF4444, #DC2626)' }}
               />
             )}
-          </button>
+          </motion.button>
         ))}
       </div>
     </div>

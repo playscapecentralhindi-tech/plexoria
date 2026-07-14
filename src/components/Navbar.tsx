@@ -26,29 +26,27 @@ export default function Navbar() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
-  // Scroll listener to toggle transparent vs liquid-glass background and handle auto-hide
+  // Scroll listener — transparent at top, frosted glass when scrolled
   useEffect(() => {
     const handleScroll = () => {
       const currentScrollY = window.scrollY;
-      
-      if (currentScrollY > 80) {
-        setIsScrolled(true);
-      } else {
-        setIsScrolled(false);
+
+      setIsScrolled(currentScrollY > 60);
+
+      // Auto-hide on scroll-down (only when menu is closed)
+      if (!isMenuOpen) {
+        if (currentScrollY > lastScrollY.current && currentScrollY > 160) {
+          setIsVisible(false);
+        } else {
+          setIsVisible(true);
+        }
       }
-      
-      // Auto-hide only when mobile drawer menu is closed
-      if (currentScrollY > lastScrollY.current && currentScrollY > 150) {
-        setIsVisible(false);
-      } else {
-        setIsVisible(true);
-      }
-      
+
       lastScrollY.current = currentScrollY;
     };
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [isMenuOpen]);
 
   // Global search keyboard shortcut (Ctrl/Cmd + K)
   useEffect(() => {
@@ -113,13 +111,16 @@ export default function Navbar() {
 
   return (
     <>
-      <nav 
+      <motion.nav 
         role="navigation"
         aria-label="Primary Navigation"
-        className={`fixed top-0 inset-x-0 w-full z-50 transition-all duration-300 select-none ${
-          isScrolled ? "glass-nav py-2" : "bg-gradient-to-b from-black/80 to-transparent py-4"
+        className={`fixed top-0 inset-x-0 w-full z-50 select-none transition-[background,backdrop-filter,border-color,box-shadow] duration-500 ease-out ${
+          isScrolled
+            ? "navbar-scrolled border-b border-white/[0.05]"
+            : "navbar-at-top bg-gradient-to-b from-black/60 via-black/20 to-transparent"
         }`}
-        style={{ transform: isVisible ? "translateY(0)" : "translateY(-100%)" }}
+        animate={{ y: isVisible ? 0 : -80 }}
+        transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 gap-4">
@@ -267,7 +268,7 @@ export default function Navbar() {
 
           </div>
         </div>
-      </nav>
+      </motion.nav>
 
       {/* Hamburger glass sidebar menu */}
       <AnimatePresence>
