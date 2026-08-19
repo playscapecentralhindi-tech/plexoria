@@ -4,8 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && npx @cloudflare/next-on-pages@1",
-    "next:build": "next build",
+    "build": "next build",
     "export": "powershell -Command \"Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue; try { Move-Item src/app/api src/api_backup -ErrorAction SilentlyContinue; next build } finally { if (Test-Path src/api_backup) { Move-Item src/api_backup src/app/api } }\"",
     "start": "next start",
     "lint": "next lint",
