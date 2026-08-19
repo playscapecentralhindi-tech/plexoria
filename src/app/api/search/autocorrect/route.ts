@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const runtime = "edge";
+
 const autocorrectCache = new Map<string, { corrected: string; changed: boolean }>();
 
 export async function GET(req: NextRequest) {

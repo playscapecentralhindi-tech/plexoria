@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const runtime = "edge";
+
 // Simple in-memory cache for development and production speedups
 const cache = new Map<string, { data: any; expiry: number }>();
 const LIST_CACHE_TTL = 10 * 60 * 1000; // 10 minutes cache TTL for lists

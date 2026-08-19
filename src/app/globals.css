@@ -833,6 +833,43 @@ div:fullscreen video {
 }
 
 /* ============================================================
+   HERO ENHANCEMENTS & SPOTLIGHT SYSTEM
+   ============================================================ */
+.hero-spotlight {
+  background: radial-gradient(circle 500px at 20% 40%, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.04) 45%, transparent 70%);
+}
+
+.hero-thumbnail-active {
+  box-shadow: 0 0 0 2px #EF4444, 0 8px 24px rgba(239, 68, 68, 0.35);
+}
+
+.glass-pill {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.glass-icon-btn {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 4px 16px rgba(0, 0, 0, 0.4);
+  transition: all var(--transition-normal);
+}
+.glass-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-2px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+.glass-icon-btn:active {
+  transform: translateY(0);
+}
+
+/* ============================================================
    RESPONSIVE — Mobile glass density reduction
    ============================================================ */
 @media (max-width: 768px) {

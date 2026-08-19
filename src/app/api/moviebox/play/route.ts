@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Plexoria API version: 1.0.5 - Fixed timeouts, stream URL fields, multi-result matching
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 const API_BASE = "https://h5-api.aoneroom.com/wefeed-h5api-bff";
 
@@ -130,6 +131,21 @@ function cleanTitle(str: string): string {
     .replace(/\[[^\]]+\]/g, "")
     .replace(/\([^)]+\)/g, "")
     .replace(/\b(hindi|tamil|telugu|english|sub|dub|dubbed|season|s\d+|e\d+|s\d+-s\d+)\b/gi, "")
+    .replace(/\bfast\s*&\s*furious\b/gi, "fast")
+    .replace(/\bfast\s+and\s+furious\b/gi, "fast")
+    .replace(/\bpart\s+(\d+)\b/gi, "$1")
+    .replace(/\bchapter\s+(\d+)\b/gi, "$1")
+    .replace(/\bvolume\s+(\d+)\b/gi, "$1")
+    .replace(/\bvol\.?\s*(\d+)\b/gi, "$1")
+    .replace(/\bx\b/gi, "10")
+    .replace(/\bix\b/gi, "9")
+    .replace(/\bviii\b/gi, "8")
+    .replace(/\bvii\b/gi, "7")
+    .replace(/\bvi\b/gi, "6")
+    .replace(/\bv\b/gi, "5")
+    .replace(/\biv\b/gi, "4")
+    .replace(/\biii\b/gi, "3")
+    .replace(/\bii\b/gi, "2")
     .replace(/[^a-z0-9]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -142,20 +158,47 @@ function shareSignificantWord(title1: string, title2: string): boolean {
   return words1.some(w => words2.includes(w));
 }
 
+function tokenizeTitle(str: string): Set<string> {
+  const stopWords = new Set(["the", "a", "an", "of", "and", "in", "to", "for", "with", "on", "at", "by", "part", "chapter", "vol", "volume"]);
+  return new Set(
+    cleanTitle(str)
+      .split(/\s+/)
+      .filter(w => w && !stopWords.has(w))
+  );
+}
+
 function getMatchScore(itemTitle: string, targetTitle: string, requestedDub?: string | null): number {
   const cleanTarget = cleanTitle(targetTitle);
   const cleanItem = cleanTitle(itemTitle);
   const rawItemTitle = itemTitle.toLowerCase();
-  const rawTargetTitle = targetTitle.toLowerCase();
 
+  // Exact match
   if (cleanItem === cleanTarget) {
     let score = 100;
     if (requestedDub && rawItemTitle.includes(requestedDub.toLowerCase())) {
       score += 10;
-    } else if (!requestedDub && (rawItemTitle.includes("hindi") || rawItemTitle.includes("tamil") || rawItemTitle.includes("telugu"))) {
-      score -= 5;
     }
     return score;
+  }
+
+  // Token Jaccard Similarity
+  const targetTokens = tokenizeTitle(targetTitle);
+  const itemTokens = tokenizeTitle(itemTitle);
+  
+  if (targetTokens.size > 0 && itemTokens.size > 0) {
+    let matches = 0;
+    targetTokens.forEach(t => {
+      if (itemTokens.has(t)) matches++;
+    });
+    
+    const targetMatchRatio = matches / targetTokens.size;
+    if (targetMatchRatio >= 0.75) {
+      let score = Math.round(targetMatchRatio * 80);
+      const extraTokens = Math.abs(itemTokens.size - targetTokens.size);
+      score -= extraTokens * 4;
+      if (requestedDub && rawItemTitle.includes(requestedDub.toLowerCase())) score += 10;
+      return Math.max(score, 15);
+    }
   }
 
   if (cleanItem.includes(cleanTarget) || cleanTarget.includes(cleanItem)) {
@@ -166,7 +209,7 @@ function getMatchScore(itemTitle: string, targetTitle: string, requestedDub?: st
     return Math.max(score, 10);
   }
 
-  if (rawItemTitle.includes(rawTargetTitle)) return 5;
+  if (rawItemTitle.includes(targetTitle.toLowerCase())) return 5;
 
   return 0;
 }
@@ -289,29 +332,37 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Failed to authenticate with provider backend" }, { status: 502 });
     }
 
-    // Build keyword list. Don't use IMDb ID — MovieBox search ignores it.
-    const cleanedTitle = title.replace(/[:\-]/g, " ").replace(/\s+/g, " ").trim();
+    // Build keyword list concisely to minimize latency
+    const cleanedTitle = title.replace(/[:\-–—]/g, " ").replace(/\s+/g, " ").trim();
     const keywordsToTry: string[] = [title];
     if (cleanedTitle !== title) keywordsToTry.push(cleanedTitle);
 
-    // Search dubbed variants explicitly — MovieBox stores dubs as separate entries
-    // e.g. "Pushpa 2 Hindi", "Pushpa 2 (Hindi Dubbed)", "Pushpa 2 Tamil"
-    const dubLangs = ["Hindi", "Tamil", "Telugu", "Korean", "Japanese"];
-    for (const lang of dubLangs) {
-      keywordsToTry.push(`${cleanedTitle} ${lang}`);
+    // Franchise alias normalization
+    if (/\bfast\s*x\b/i.test(title)) {
+      keywordsToTry.push("Fast and Furious 10");
     }
 
-    // Fallback: first word of title (helps for subtitled titles)
-    const firstWord = cleanedTitle.split(" ")[0];
-    if (firstWord && firstWord.length > 3 && !keywordsToTry.includes(firstWord)) {
-      keywordsToTry.push(firstWord);
+    // Roman numeral conversion (e.g. Part II -> Part 2)
+    const romanFixed = cleanedTitle
+      .replace(/\bpart\s+ii\b/i, "part 2")
+      .replace(/\bchapter\s+ii\b/i, "chapter 2")
+      .replace(/\bii\b/gi, "2");
+    if (romanFixed !== cleanedTitle && !keywordsToTry.includes(romanFixed)) {
+      keywordsToTry.push(romanFixed);
+    }
+
+    // Dub queries
+    if (requestedDub) {
+      keywordsToTry.push(`${cleanedTitle} ${requestedDub}`);
+    } else {
+      keywordsToTry.push(`${cleanedTitle} Hindi`);
     }
 
     const allSearchItems: any[] = [];
     const seenIds = new Set<number>();
     const targetType = mediaType === "movie" ? 1 : 2;
 
-    // Run ALL keyword searches IN PARALLEL — critical for Vercel's 10s function limit
+    // Run keyword searches in parallel with 6s timeout
     const searchResults = await Promise.allSettled(
       keywordsToTry.map(keyword =>
         makePostRequest(`${API_BASE}/subject/search`, {
@@ -338,18 +389,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "No results found in streaming database for this title" }, { status: 404 });
     }
 
-    // Score and pick top candidates (up to 5) to try streaming from
-    // Score all results — pass requestedDub so preferred language gets priority
+    // Score and pick top candidates (up to 4) to try streaming from
     const scoredItems = allSearchItems
       .map((item) => ({ item, score: getMatchScore(item.title || "", title, requestedDub) }))
       .sort((a, b) => b.score - a.score);
 
-    // Take up to 8 top-scored items for max stream coverage
     let matchedItems: typeof allSearchItems = [];
     if (scoredItems.length > 0 && scoredItems[0].score > 0) {
-      matchedItems = scoredItems.slice(0, 8).filter(s => s.score > 0).map(s => s.item);
+      matchedItems = scoredItems.slice(0, 4).filter(s => s.score > 0).map(s => s.item);
     } else if (allSearchItems.length > 0) {
-      // Zero-score fallback: check if the first (most relevant) item shares a significant word
       const fallbackItem = allSearchItems[0];
       if (shareSignificantWord(fallbackItem.title || "", title)) {
         matchedItems = [fallbackItem];
@@ -394,7 +442,7 @@ export async function GET(req: NextRequest) {
             "Authorization": `Bearer ${token}`,
             ...(clientIp ? { "X-Forwarded-For": clientIp, "X-Real-IP": clientIp } : {})
           }
-        }, 15000);
+        }, 7000);
 
         if (!playRes.ok) {
           console.error(`Play request returned ${playRes.status} for "${item.title}"`);

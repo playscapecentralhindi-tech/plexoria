@@ -20,11 +20,12 @@ def base_url():
         print("\n[Test Harness] Next.js server not running. Starting one...")
         # Start the Next.js production or dev server
         # If build is present, start production server, otherwise dev server
-        cmd = "npm run start" if os.path.exists("f:/Android/Plexoria/plexoria/.next") else "npm run dev"
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cmd = "npm run start" if os.path.exists(os.path.join(root_dir, ".next")) else "npm run dev"
         server_process = subprocess.Popen(
             cmd, 
             shell=True, 
-            cwd="f:/Android/Plexoria/plexoria",
+            cwd=root_dir,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )

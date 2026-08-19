@@ -114,6 +114,15 @@ interface ServerConfig {
   dub: string;
 }
 
+export const EMBED_SERVERS = [
+  { id: "vidlink", name: "VidLink Cloud (Ultra 4K)", desc: "Fast multi-language cloud mirror", getUrl: (type: string, id: string, s: number, e: number) => type === "tv" ? `https://vidlink.pro/tv/${id}/${s}/${e}` : `https://vidlink.pro/movie/${id}` },
+  { id: "autoembed", name: "AutoEmbed Fast Server", desc: "High-speed auto-scaling CDN", getUrl: (type: string, id: string, s: number, e: number) => type === "tv" ? `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}` : `https://player.autoembed.cc/embed/movie/${id}` },
+  { id: "embedsu", name: "Embed.su VIP Multi-Stream", desc: "Multi-server fast buffer", getUrl: (type: string, id: string, s: number, e: number) => type === "tv" ? `https://embed.su/embed/tv/${id}/${s}/${e}` : `https://embed.su/embed/movie/${id}` },
+  { id: "vidsrc_cc", name: "VidSrc CC Mirror", desc: "Global redundant server", getUrl: (type: string, id: string, s: number, e: number) => type === "tv" ? `https://vidsrc.cc/v2/embed/tv/${id}/${s}/${e}` : `https://vidsrc.cc/v2/embed/movie/${id}` },
+  { id: "vidsrc_to", name: "VidSrc To Cloud", desc: "Reliable fallback mirror", getUrl: (type: string, id: string, s: number, e: number) => type === "tv" ? `https://vidsrc.to/embed/tv/${id}/${s}/${e}` : `https://vidsrc.to/embed/movie/${id}` },
+  { id: "smashy", name: "SmashyStream Global", desc: "Multi-audio & subtitle mirror", getUrl: (type: string, id: string, s: number, e: number) => type === "tv" ? `https://embed.smashystream.com/playere.php?tmdb=${id}&season=${s}&episode=${e}` : `https://embed.smashystream.com/playere.php?tmdb=${id}` }
+];
+
 export default function VideoPlayer({
   mediaType,
   id,
@@ -138,6 +147,7 @@ export default function VideoPlayer({
   const [activeResolution, setActiveResolution] = useState("");
   const [streamError, setStreamError] = useState<string | null>(null);
   const [hasClickedPlay, setHasClickedPlay] = useState(false);
+  const [embedServer, setEmbedServer] = useState<string | null>(null);
 
   const isPhpDeploy = typeof window !== 'undefined' && 
     (window.location.hostname.includes('gr.tc') || window.location.hostname.includes('infinityfree'));
@@ -521,19 +531,63 @@ export default function VideoPlayer({
         )}
 
         <div className="absolute inset-0 z-10 flex items-center justify-center">
-          {isLoadingStream ? (
+          {embedServer ? (
+            <div className="relative w-full h-full bg-black rounded-2xl overflow-hidden">
+              <iframe
+                src={EMBED_SERVERS.find(s => s.id === embedServer)?.getUrl(mediaType, id, season, episode)}
+                className="w-full h-full border-0"
+                allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          ) : isLoadingStream ? (
             <div className="flex flex-col items-center gap-3">
               <div className="w-10 h-10 rounded-full border-4 border-[#EF4444]/20 border-t-[#EF4444] animate-spin"></div>
               <span className="text-xs text-gray-400 font-semibold">Resolving secure streams...</span>
             </div>
           ) : streamError ? (
-            <div className="relative w-full h-full bg-black flex flex-col items-center justify-center p-6 gap-4">
-              <div className="text-center space-y-1 max-w-sm">
-                <span className="text-[#EF4444] text-[10px] font-extrabold font-mono tracking-widest uppercase block mb-1">Streaming Alert</span>
-                <h3 className="text-sm font-bold text-white">Stream currently unavailable</h3>
-                <p className="text-[11px] text-gray-400 leading-normal font-medium">
-                  {streamError || "Plexoria failed to resolve the media streaming source. Please try again later or refresh the page."}
+            <div className="relative w-full h-full bg-[#0B0C10] flex flex-col items-center justify-center p-6 gap-4 z-20">
+              <div className="text-center space-y-3 max-w-md">
+                <span className="text-[#EF4444] text-[10px] font-extrabold font-mono tracking-widest uppercase px-3 py-1 rounded-full bg-[#EF4444]/10 border border-[#EF4444]/20 inline-block">
+                  Mirror Backup Available
+                </span>
+                <h3 className="text-base font-bold text-white">Stream with High-Speed Cloud Mirror</h3>
+                <p className="text-xs text-gray-400 leading-relaxed font-medium">
+                  Direct stream is unindexed for this title. Tap below to launch our ultra-fast Cloud Mirror:
                 </p>
+                <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
+                  <button
+                    onClick={() => {
+                      setEmbedServer("vidlink");
+                      setSelectedServerName("VidLink Cloud (Ultra 4K)");
+                      setStreamError(null);
+                    }}
+                    className="px-5 py-2.5 rounded-xl bg-[#EF4444] hover:bg-[#DC2626] text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-[#EF4444]/25 transition-all transform hover:scale-105 cursor-pointer"
+                  >
+                    <Play size={13} fill="currentColor" />
+                    <span>Play on VidLink Cloud</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEmbedServer("autoembed");
+                      setSelectedServerName("AutoEmbed Fast Server");
+                      setStreamError(null);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-xs border border-white/10 transition-colors cursor-pointer"
+                  >
+                    <span>AutoEmbed Fast</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEmbedServer("embedsu");
+                      setSelectedServerName("Embed.su VIP Multi-Stream");
+                      setStreamError(null);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-xs border border-white/10 transition-colors cursor-pointer"
+                  >
+                    <span>Embed.su VIP</span>
+                  </button>
+                </div>
               </div>
             </div>
           ) : (
@@ -646,10 +700,9 @@ export default function VideoPlayer({
                 setIsPlaybackMenuOpen(false);
               }}
               className="h-10 px-4 bg-[#1E1E1E] hover:bg-[#242424] text-white font-semibold rounded-[12px] flex items-center gap-2 border border-white/5 transition-colors cursor-pointer"
-              disabled={!selectedLanguage}
             >
               <Server size={13} className="text-[#EF4444]" />
-              <span>Server: {selectedServerName || "Detecting..."}</span>
+              <span>Server: {selectedServerName || (embedServer ? EMBED_SERVERS.find(s => s.id === embedServer)?.name : "Direct Stream")}</span>
               <ChevronDown size={14} className="text-gray-400" />
             </button>
 
@@ -660,29 +713,67 @@ export default function VideoPlayer({
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
                   transition={{ duration: 0.15, ease: "easeOut" }}
-                  className="absolute left-0 bottom-12 mb-1 w-64 bg-[#171717]/95 backdrop-blur-md border border-white/10 rounded-[14px] p-1.5 flex flex-col gap-0.5 shadow-2xl z-50 animate-fade-in max-h-60 overflow-y-auto"
+                  className="absolute left-0 bottom-12 mb-1 w-72 bg-[#171717]/95 backdrop-blur-md border border-white/10 rounded-[14px] p-1.5 flex flex-col gap-0.5 shadow-2xl z-50 animate-fade-in max-h-72 overflow-y-auto"
                 >
-                  <span className="px-2.5 py-1 text-[9px] text-gray-500 font-extrabold uppercase tracking-wider">Available Servers ({selectedLanguage})</span>
-                  {streamSources.filter((s: any) => s.language === selectedLanguage).map((srv: any) => {
-                    const isSelected = srv.serverName === selectedServerName;
+                  {streamSources.length > 0 && selectedLanguage && (
+                    <>
+                      <span className="px-2.5 py-1 text-[9px] text-gray-500 font-extrabold uppercase tracking-wider">Direct CDN Servers ({selectedLanguage})</span>
+                      {streamSources.filter((s: any) => s.language === selectedLanguage).map((srv: any) => {
+                        const isSelected = !embedServer && srv.serverName === selectedServerName;
+                        return (
+                          <button
+                            key={srv.serverName}
+                            onClick={() => {
+                              setEmbedServer(null);
+                              handleServerChange(srv.serverName);
+                              setIsServerDropdownOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-xs font-semibold transition-colors ${
+                              isSelected 
+                                ? "bg-[#EF4444]/10 text-[#EF4444]" 
+                                : "text-gray-300 hover:bg-white/5 hover:text-white"
+                            }`}
+                          >
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-bold">{srv.serverName}</span>
+                              <span className="text-[10px] text-gray-500 font-medium">
+                                {srv.resolution} • {srv.codec} {srv.hdr ? "• HDR" : ""}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              {isSelected && <Check size={12} className="text-[#EF4444]" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
+
+                  <span className="px-2.5 py-1.5 text-[9px] text-gray-500 font-extrabold uppercase tracking-wider border-t border-white/5 mt-1">Cloud Mirror Servers (100% Online)</span>
+                  {EMBED_SERVERS.map((srv) => {
+                    const isSelected = embedServer === srv.id;
                     return (
                       <button
-                        key={srv.serverName}
-                        onClick={() => handleServerChange(srv.serverName)}
-                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-xs font-semibold transition-colors ${
+                        key={srv.id}
+                        onClick={() => {
+                          setEmbedServer(srv.id);
+                          setSelectedServerName(srv.name);
+                          setStreamError(null);
+                          setIsServerDropdownOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs font-semibold transition-colors ${
                           isSelected 
                             ? "bg-[#EF4444]/10 text-[#EF4444]" 
                             : "text-gray-300 hover:bg-white/5 hover:text-white"
                         }`}
                       >
                         <div className="flex flex-col gap-0.5">
-                          <span className="font-bold">{srv.serverName}</span>
-                          <span className="text-[10px] text-gray-500 font-medium">
-                            {srv.resolution} • {srv.codec} {srv.hdr ? "• HDR" : ""}
-                          </span>
+                          <span className="font-bold">{srv.name}</span>
+                          <span className="text-[10px] text-gray-500 font-medium">{srv.desc}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                           {isSelected && <Check size={12} className="text-[#EF4444]" />}
                         </div>
                       </button>
