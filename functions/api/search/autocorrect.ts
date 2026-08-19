@@ -1,25 +1,32 @@
-import { NextRequest, NextResponse } from "next/server";
-
-export const runtime = "edge";
+interface Env {
+  GEMINI_API_KEY?: string;
+}
 
 const autocorrectCache = new Map<string, { corrected: string; changed: boolean }>();
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = req.nextUrl;
-  const query = searchParams.get("query");
+export const onRequestGet = async (context: any) => {
+  const { request, env } = context;
+  const urlObj = new URL(request.url);
+  const query = urlObj.searchParams.get("query");
 
   if (!query || query.trim().length < 3) {
-    return NextResponse.json({ corrected: query || "", changed: false });
+    return new Response(JSON.stringify({ corrected: query || "", changed: false }), {
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   const cacheKey = query.trim().toLowerCase();
   if (autocorrectCache.has(cacheKey)) {
-    return NextResponse.json(autocorrectCache.get(cacheKey));
+    return new Response(JSON.stringify(autocorrectCache.get(cacheKey)), {
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = env.GEMINI_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ corrected: query, changed: false });
+    return new Response(JSON.stringify({ corrected: query, changed: false }), {
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   try {
@@ -55,23 +62,28 @@ export async function GET(req: NextRequest) {
     );
 
     if (res.ok) {
-      const data = await res.json();
+      const data: any = await res.json();
       const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
       const parsed = JSON.parse(rawText.trim());
       if (parsed && typeof parsed.corrected === "string") {
-        // Cache the result
         if (autocorrectCache.size >= 500) {
           const oldestKey = autocorrectCache.keys().next().value;
           if (oldestKey !== undefined) autocorrectCache.delete(oldestKey);
         }
         autocorrectCache.set(cacheKey, parsed);
-        return NextResponse.json(parsed);
+        return new Response(JSON.stringify(parsed), {
+          headers: { "Content-Type": "application/json" },
+        });
       }
     }
 
-    return NextResponse.json({ corrected: query, changed: false });
+    return new Response(JSON.stringify({ corrected: query, changed: false }), {
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (err) {
     console.error("Autocorrect Gemini API call failed:", err);
-    return NextResponse.json({ corrected: query, changed: false });
+    return new Response(JSON.stringify({ corrected: query, changed: false }), {
+      headers: { "Content-Type": "application/json" },
+    });
   }
-}
+};

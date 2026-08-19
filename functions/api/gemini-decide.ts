@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-
-export const runtime = "edge";
+interface Env {
+  GEMINI_API_KEY?: string;
+}
 
 interface ServerMetric {
   id: number;
@@ -11,19 +11,27 @@ interface ServerMetric {
   latency: number;
 }
 
-export async function POST(req: NextRequest) {
+export const onRequestPost = async (context: any) => {
+  const { request, env } = context;
+
   try {
-    let body;
+    let body: any;
     try {
-      body = await req.json();
+      body = await request.json();
     } catch (e) {
-      return NextResponse.json({ error: "Malformed JSON payload" }, { status: 400 });
+      return new Response(JSON.stringify({ error: "Malformed JSON payload" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
-    const { mediaType, id, season, episode } = body;
+    const { mediaType, id, season, episode } = body || {};
 
     if (!mediaType || !id) {
-      return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
+      return new Response(JSON.stringify({ error: "Missing required parameters" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     if (
@@ -31,10 +39,12 @@ export async function POST(req: NextRequest) {
       (mediaType !== "movie" && mediaType !== "tv") ||
       (typeof id !== "string" && typeof id !== "number")
     ) {
-      return NextResponse.json({ error: "Invalid parameter types" }, { status: 400 });
+      return new Response(JSON.stringify({ error: "Invalid parameter types" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
-    // 5 base providers
     const baseProviders = [
       { id: 1, name: "VidSrc Master", url: `https://vidsrc.to/embed/${mediaType}/${id}${mediaType === "tv" ? `/${season}/${episode}` : ""}` },
       { id: 2, name: "Embed.su Multi", url: `https://embed.su/embed/${mediaType}/${id}${mediaType === "tv" ? `/${season}/${episode}` : ""}` },
@@ -43,7 +53,6 @@ export async function POST(req: NextRequest) {
       { id: 5, name: "VidLink AdFree", url: `https://vidlink.pro/${mediaType}/${id}${mediaType === "tv" ? `/${season}/${episode}` : ""}` }
     ];
 
-    // Check all 5 providers in parallel
     const metrics: ServerMetric[] = await Promise.all(
       baseProviders.map(async (provider) => {
         const startTime = Date.now();
@@ -82,9 +91,9 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = env.GEMINI_API_KEY;
     let decision = {
-      bestServerId: 5, // Default fallback to VidLink
+      bestServerId: 5,
       reason: "Heuristic default fallback"
     };
 
@@ -119,7 +128,7 @@ export async function POST(req: NextRequest) {
         );
 
         if (geminiRes.ok) {
-          const geminiData = await geminiRes.json();
+          const geminiData: any = await geminiRes.json();
           const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
           const parsed = JSON.parse(rawText.trim());
           if (parsed && typeof parsed.bestServerId === "number") {
@@ -131,7 +140,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Heuristic fallback if Gemini didn't make the decision or key is missing
     if (decision.reason === "Heuristic default fallback") {
       const onlineSorted = metrics
         .filter(m => m.status === "online")
@@ -145,12 +153,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      decision,
-      metrics
+    return new Response(JSON.stringify({ decision, metrics }), {
+      headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Error in gemini-decide route:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return new Response(JSON.stringify({ error: "Internal Server Error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-}
+};

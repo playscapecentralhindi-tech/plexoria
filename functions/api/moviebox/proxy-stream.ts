@@ -1,12 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-
-export const dynamic = "force-dynamic";
-export const runtime = "edge";
-
 function isAllowedStreamDomain(hostname: string): boolean {
   const h = hostname.toLowerCase();
 
-  // Strict domain checks (exact match or ends with .domain)
   const strictDomains = [
     "aoneroom.com",
     "netfilm.world",
@@ -18,7 +12,6 @@ function isAllowedStreamDomain(hostname: string): boolean {
     return true;
   }
 
-  // Safe keyword matching on parts of the domain name to prevent matching "fakeaoneroom.com"
   const cdnKeywords = [
     "wefeed",
     "cdn",
@@ -43,33 +36,33 @@ function isAllowedStreamDomain(hostname: string): boolean {
   return parts.some(part => cdnKeywords.some(kw => part.includes(kw)));
 }
 
-
-export async function GET(req: NextRequest) {
-  const { searchParams } = req.nextUrl;
-  const targetUrl = searchParams.get("url");
+export const onRequestGet = async (context: any) => {
+  const { request } = context;
+  const urlObj = new URL(request.url);
+  const targetUrl = urlObj.searchParams.get("url");
 
   if (!targetUrl) {
-    return new NextResponse("Missing url parameter", { status: 400 });
+    return new Response("Missing url parameter", { status: 400 });
   }
 
-  const rangeHeader = req.headers.get("range");
+  const rangeHeader = request.headers.get("range");
 
   let parsedTarget: URL;
   try {
     parsedTarget = new URL(targetUrl);
   } catch (e) {
-    return new NextResponse("Invalid url parameter", { status: 400 });
+    return new Response("Invalid url parameter", { status: 400 });
   }
 
   if (parsedTarget.protocol !== "http:" && parsedTarget.protocol !== "https:") {
-    return new NextResponse("Forbidden protocol", { status: 403 });
+    return new Response("Forbidden protocol", { status: 403 });
   }
 
   const hostname = parsedTarget.hostname.toLowerCase();
 
   if (!isAllowedStreamDomain(hostname)) {
     console.warn(`[Proxy] Blocked domain: ${hostname}`);
-    return new NextResponse("Forbidden target domain", { status: 403 });
+    return new Response("Forbidden target domain", { status: 403 });
   }
 
   const refererHost = hostname.includes("aoneroom")
@@ -89,7 +82,6 @@ export async function GET(req: NextRequest) {
 
   try {
     const controller = new AbortController();
-    // FIX: 30s timeout instead of 5s for video streaming connections
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     const response = await fetch(targetUrl, {
@@ -102,13 +94,12 @@ export async function GET(req: NextRequest) {
 
     if (!response.ok && response.status !== 206) {
       console.error(`Proxy stream target returned status ${response.status} for: ${targetUrl}`);
-      return new NextResponse(`Target returned ${response.status}`, { status: response.status });
+      return new Response(`Target returned ${response.status}`, { status: response.status });
     }
 
     const contentType = response.headers.get("content-type") || "";
     const urlPath = targetUrl.split("?")[0];
     const isHls = urlPath.endsWith(".m3u8") || /mpegurl|m3u8/i.test(contentType);
-    const isTs = urlPath.endsWith(".ts") || urlPath.endsWith(".aac") || urlPath.endsWith(".mp4");
 
     if (isHls) {
       const text = await response.text();
@@ -130,7 +121,6 @@ export async function GET(req: NextRequest) {
           return line;
         }
 
-        // Rewrite segment URLs
         try {
           const resolvedUrl = new URL(trimmed, baseUrl).toString();
           return `/api/moviebox/proxy-stream?url=${encodeURIComponent(resolvedUrl)}`;
@@ -152,7 +142,6 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // For video segments, MP4, TS files — pass through with proper headers
     const resHeaders = new Headers();
     const copyHeaders = [
       "content-type",
@@ -169,7 +158,6 @@ export async function GET(req: NextRequest) {
       if (val) resHeaders.set(h, val);
     });
 
-    // Ensure CORS for video
     resHeaders.set("access-control-allow-origin", "*");
     resHeaders.set("access-control-allow-methods", "GET, OPTIONS");
     resHeaders.set("access-control-expose-headers", "content-length, content-range, accept-ranges");
@@ -181,8 +169,8 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     console.error("Proxy stream error:", err);
     if (err.name === "AbortError") {
-      return new NextResponse("Gateway Timeout: Upstream server took too long to respond", { status: 504 });
+      return new Response("Gateway Timeout: Upstream server took too long to respond", { status: 504 });
     }
-    return new NextResponse(`Bad Gateway: ${err.message}`, { status: 502 });
+    return new Response(`Bad Gateway: ${err.message}`, { status: 502 });
   }
-}
+};

@@ -5,13 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "export": "powershell -Command \"Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue; try { Move-Item src/app/api src/api_backup -ErrorAction SilentlyContinue; next build } finally { if (Test-Path src/api_backup) { Move-Item src/api_backup src/app/api } }\"",
     "start": "next start",
     "lint": "next lint",
     "deploy": "node deploy.js",
-    "cloudflare:build": "opennextjs-cloudflare",
-    "pages:build": "opennextjs-cloudflare",
-    "pages:deploy": "wrangler deploy"
+    "pages:deploy": "wrangler pages deploy out"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
@@ -27,7 +24,7 @@
     "react-dom": "^18"
   },
   "devDependencies": {
-    "@opennextjs/cloudflare": "^0.5.0",
+    "@cloudflare/workers-types": "^4.20240208.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
