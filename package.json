@@ -30,6 +30,8 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@vercel/next": "^4.2.14",
+    "@vercel/nft": "^0.27.0",
     "autoprefixer": "^10.5.2",
     "basic-ftp": "^6.0.1",
     "dotenv": "^17.4.2",
