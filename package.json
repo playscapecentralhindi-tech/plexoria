@@ -9,8 +9,9 @@
     "start": "next start",
     "lint": "next lint",
     "deploy": "node deploy.js",
-    "pages:build": "npx @cloudflare/next-on-pages@1",
-    "pages:deploy": "wrangler pages deploy .vercel/output/static"
+    "cloudflare:build": "opennextjs-cloudflare",
+    "pages:build": "opennextjs-cloudflare",
+    "pages:deploy": "wrangler deploy"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
@@ -26,12 +27,10 @@
     "react-dom": "^18"
   },
   "devDependencies": {
-    "@cloudflare/next-on-pages": "^1.13.7",
+    "@opennextjs/cloudflare": "^0.5.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "@vercel/next": "^4.2.14",
-    "@vercel/nft": "^0.27.0",
     "autoprefixer": "^10.5.2",
     "basic-ftp": "^6.0.1",
     "dotenv": "^17.4.2",

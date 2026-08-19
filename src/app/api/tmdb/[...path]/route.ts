@@ -7,7 +7,7 @@ const cache = new Map<string, { data: any; expiry: number }>();
 const LIST_CACHE_TTL = 10 * 60 * 1000; // 10 minutes cache TTL for lists
 const DETAIL_CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours cache TTL for details
 
-// Fallback constants ensure the proxy works even without env vars set on Vercel
+// Fallback constants ensure the proxy works even without environment variables configured
 const TMDB_BASE = process.env.TMDB_API_BASE || "https://api.themoviedb.org/3";
 const TMDB_KEY =
   process.env.TMDB_API_KEY ||

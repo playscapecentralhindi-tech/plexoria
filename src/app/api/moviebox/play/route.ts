@@ -25,7 +25,7 @@ const tokenCache = new Map<string, TokenData>();
 const playCache = new Map<string, { data: any; expiry: number }>();
 const PLAY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Per-request timeout: 8s (fits within Vercel 10s free limit with buffer)
+// Per-request timeout: 8s (fits within Cloudflare edge timeout with buffer)
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -321,7 +321,7 @@ export async function GET(req: NextRequest) {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
         "CDN-Cache-Control": "no-store",
-        "Vercel-CDN-Cache-Control": "no-store",
+        "Cloudflare-CDN-Cache-Control": "no-store",
       }
     });
   }
@@ -605,7 +605,7 @@ export async function GET(req: NextRequest) {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
         "CDN-Cache-Control": "no-store",
-        "Vercel-CDN-Cache-Control": "no-store",
+        "Cloudflare-CDN-Cache-Control": "no-store",
       }
     });
 

@@ -47,10 +47,10 @@ export default function RootLayout({
               "@context": "https://schema.org",
               "@type": "WebSite",
               "name": "Plexoria",
-              "url": "https://plexoria.vercel.app",
+              "url": "https://plexoria.pages.dev",
               "potentialAction": {
                 "@type": "SearchAction",
-                "target": "https://plexoria.vercel.app/search?q={search_term_string}",
+                "target": "https://plexoria.pages.dev/search?q={search_term_string}",
                 "query-input": "required name=search_term_string"
               }
             })
